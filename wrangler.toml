@@ -1,0 +1,17 @@
+name = "getting-there"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+# The page, styles and script in ./public are served as static files.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# One Durable Object holds all rides. SQLite-backed objects work on the free plan.
+[[durable_objects.bindings]]
+name = "BOARD"
+class_name = "Board"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Board"]

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Getting there</title>
+  <meta name="description" content="Carpools for the weekend: offer a ride or grab a seat.">
+  <meta name="theme-color" content="#eef0e9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1411" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f5a43'/%3E%3Ccircle cx='10' cy='22' r='3.2' fill='%23f2a93b'/%3E%3Ccircle cx='22' cy='22' r='3.2' fill='%23f2a93b'/%3E%3Cpath d='M6 19l3-7h14l3 7z' fill='%23eef0e9'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <h1 id="event-name">Getting there</h1>
+      <p id="tagline" class="tagline"></p>
+      <p id="venue-note" class="venue-note"></p>
+    </header>
+
+    <div id="admin-banner" class="admin-banner" hidden>
+      <span>Organizer mode: you can edit or remove anything.</span>
+      <button type="button" class="link" id="btn-admin-exit">Exit</button>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="btn primary" id="btn-drive">I'm driving</button>
+      <button type="button" class="btn" id="btn-need">I need a ride</button>
+    </div>
+
+    <section id="mine" class="mine" hidden></section>
+
+    <nav id="legs" class="legs" aria-label="Filter by day"></nav>
+
+    <main id="board" class="board" aria-live="polite">
+      <p class="loading">Loading rides…</p>
+    </main>
+
+    <footer class="foot">
+      <button type="button" class="btn small" id="btn-summary">Copy summary for WhatsApp</button>
+      <a id="wa-group" class="link" href="#" target="_blank" rel="noopener" hidden>Open the WhatsApp group</a>
+      <span class="updated" id="updated"></span>
+      <button type="button" class="link" id="btn-admin">Organizer</button>
+    </footer>
+  </div>
+
+  <div id="gate" class="gate" hidden>
+    <form class="gate-card" id="gate-form">
+      <h2>Getting there</h2>
+      <p>Enter the event code from the WhatsApp group.</p>
+      <label class="field">
+        <span>Event code</span>
+        <input id="gate-code" name="code" autocomplete="off" autocapitalize="off" required>
+      </label>
+      <p class="form-error" id="gate-error" hidden></p>
+      <button class="btn primary" type="submit">Continue</button>
+    </form>
+  </div>
+
+  <dialog id="dlg" class="dlg">
+    <form method="dialog" id="dlg-form" class="dlg-form" novalidate>
+      <header class="dlg-head">
+        <h2 id="dlg-title"></h2>
+        <button type="button" class="icon-btn" id="dlg-close" aria-label="Close">×</button>
+      </header>
+      <div id="dlg-body" class="dlg-body"></div>
+      <p class="form-error" id="dlg-error" hidden></p>
+      <footer class="dlg-foot">
+        <button type="button" class="btn" id="dlg-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="dlg-submit">Save</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

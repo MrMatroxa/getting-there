@@ -1,0 +1,4 @@
+# Copy this file to .dev.vars for local testing (npm run dev).
+# On Cloudflare, set the same values with: npx wrangler secret put <NAME>
+EVENT_CODE=letsgo
+ADMIN_KEY=change-me-to-something-long

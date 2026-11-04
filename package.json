@@ -1,0 +1,15 @@
+{
+  "name": "getting-there",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Carpool board for the weekend: offer a ride or grab a seat.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node test/board.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.20.0"
+  }
+}
