@@ -17,10 +17,10 @@ window.CONFIG = {
   // The trips people can drive or join. Add a date ("2026-11-06") to show it.
   // direction: "to" = city → destination, "from" = destination → city.
   legs: [
-    { id: "fri-to", day: "Friday", date: "Nov 20", direction: "to" },
-    { id: "sat-to", day: "Saturday", date: "Nov 21", direction: "to" },
-    { id: "sat-from", day: "Saturday", date: "Nov 21", direction: "from" },
-    { id: "sun-from", day: "Sunday", date: "Nov 22", direction: "from" },
+    { id: "fri-to", day: "Friday", date: "2026-11-20", direction: "to" },
+    { id: "sat-to", day: "Saturday", date: "2026-11-21", direction: "to" },
+    { id: "sat-from", day: "Saturday", date: "2026-11-21", direction: "from" },
+    { id: "sun-from", day: "Sunday", date: "2026-11-22", direction: "from" },
   ],
 
   // Added to address searches so Google Maps looks in the right city.

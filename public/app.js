@@ -193,7 +193,12 @@
         const free = t.seats - t.passengers.length;
         const paxList = t.passengers.length
           ? `<ul class="mine-pax">${t.passengers
-              .map((p) => `<li><span class="name">${esc(p.name)}</span>${contactHtml(p.contact)}${wantsHtml(p, leg)}${aroundHtml(p)}</li>`)
+              .map(
+                (p) =>
+                  `<li><span class="name">${esc(p.name)}</span>${contactHtml(p.contact)}${wantsHtml(p, leg)}${aroundHtml(p)}${
+                    isMine(p.id) ? "" : `<button type="button" class="link danger" data-act="remove-pax" data-trip="${esc(t.id)}" data-pax="${esc(p.id)}" aria-label="Remove ${esc(p.name)}">Remove</button>`
+                  }</li>`
+              )
               .join("")}</ul>`
           : `<p class="mine-empty">Nobody in your car yet.</p>`;
         const add =
