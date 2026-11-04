@@ -436,8 +436,16 @@
   // Wording that depends on whether the trip goes there or back.
   const placeWords = (back) =>
     back
-      ? { label: "Drop-off in the city", hint: "Where you'll drop people off. Opens in Google Maps." }
-      : { label: "Meeting point in the city", hint: "Where you'll pick people up. Opens in Google Maps." };
+      ? {
+          label: "Drop-off in the city",
+          hint: "Where you'll drop people off. Opens in Google Maps.",
+          note: "e.g. Can drop you off anywhere along the way. We'll split fuel costs.",
+        }
+      : {
+          label: "Meeting point in the city",
+          hint: "Where you'll pick people up. Opens in Google Maps.",
+          note: "e.g. Can pick you up anywhere along the way. We'll split fuel costs.",
+        };
 
   // ---------- flows ----------
   function driveForm(trip, presetLeg, prefill) {
@@ -481,7 +489,7 @@
         <label class="field"><span id="f-place-label"></span><input id="f-pickup" name="pickup" required maxlength="100" value="${esc(v.pickup)}" placeholder="e.g. Brīvības iela 99, or Rimi Origo" autocomplete="off"><small id="f-place-hint"></small></label>
         <fieldset class="fieldset"><legend>Trunk space</legend><div class="choices">${trunk}</div></fieldset>
         ${personFields(v.driver, v.contact)}
-        <label class="field"><span>Note <small>(optional)</small></span><textarea id="f-note" name="note" maxlength="280" placeholder="e.g. Can pick up anywhere along the way">${esc(v.note)}</textarea></label>`,
+        <label class="field"><span>Note <small>(optional)</small></span><textarea id="f-note" name="note" maxlength="280" placeholder="">${esc(v.note)}</textarea></label>`,
       onOpen(root) {
         const flex = $("#f-flex", root);
         const timeIn = $("#f-time", root);
@@ -491,6 +499,7 @@
           const words = placeWords(back);
           $("#f-place-label", root).textContent = words.label;
           $("#f-place-hint", root).textContent = words.hint;
+          $("#f-note", root).placeholder = words.note;
           // "Not sure yet" is mainly for the way back, but never hide it once it's on.
           $("#f-flex-wrap", root).hidden = !back && !flex.checked;
         };
@@ -538,7 +547,14 @@
         const res = await api("trips", { method: "POST", body });
         remember(res.id, res.token);
         const leg = legById[body.leg];
-        const back = leg && leg.direction === "to" ? legs.find((l) => l.direction === "from" && !data.trips.some((t) => isMine(t.id) && t.leg === l.id)) : null;
+        // Suggest the last return trip (Sunday) first: that's when most people head home.
+        const back =
+          leg && leg.direction === "to"
+            ? legs
+                .slice()
+                .reverse()
+                .find((l) => l.direction === "from" && !data.trips.some((t) => isMine(t.id) && t.leg === l.id))
+            : null;
         if (back) {
           openDialog({
             title: "Your ride is up",
