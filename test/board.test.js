@@ -92,4 +92,26 @@ r = await call("DELETE", `trips/${trip.id}`, { token: trip.token });
 assert.equal(r.body.state.trips.length, 0);
 assert.deepEqual(r.body.state.requests.map((x) => x.name), ["Pēteris"]);
 
+// flexible return trip: time may be empty, but only when flagged flexible
+r = await call("POST", "trips", { body: { leg: "sun-from", time: "", seats: 2, pickup: "Brīvības 99", driver: "Mat", contact: "29000000" } });
+assert.equal(r.status, 400, "empty time needs flexible");
+r = await call("POST", "trips", { body: { leg: "sun-from", time: "", flexible: true, seats: 2, pickup: "Brīvības 99", driver: "Mat", contact: "29000000" } });
+assert.equal(r.status, 200);
+const back = r.body;
+assert.equal(r.body.state.trips.find((t) => t.id === back.id).time, "");
+r = await call("PATCH", `trips/${back.id}`, { body: { time: "16:30" }, token: back.token });
+assert.equal(r.body.state.trips.find((t) => t.id === back.id).time, "16:30");
+
+// a request's area, address and time follow the person into the car and back out
+r = await call("POST", "requests", { body: { leg: "sun-from", name: "Andris", contact: "20000009", area: "Pļavnieki", pickup: "Spice", time: "15:00" } });
+const andris = r.body;
+r = await call("POST", `trips/${back.id}/seats`, { body: { requestId: andris.id }, token: back.token });
+const pax = r.body.state.trips.find((t) => t.id === back.id).passengers[0];
+assert.deepEqual([pax.area, pax.pickup, pax.time], ["Pļavnieki", "Spice", "15:00"]);
+r = await call("DELETE", `trips/${back.id}/seats/${andris.id}`, { token: back.token });
+const relisted = r.body.state.requests.find((x) => x.id === andris.id);
+assert.deepEqual([relisted.area, relisted.pickup, relisted.time], ["Pļavnieki", "Spice", "15:00"]);
+await call("DELETE", `requests/${andris.id}`, { admin: "boss" });
+await call("DELETE", `trips/${back.id}`, { token: back.token });
+
 console.log("All carpool tests passed.");

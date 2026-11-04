@@ -23,13 +23,25 @@ window.CONFIG = {
     { id: "sun-from", day: "Sunday", date: "Nov 22", direction: "from" },
   ],
 
-  // Meeting points in the city. Placeholders: change them to your real spots.
-  pickupPoints: [
-    "Central Station",
-    "Old Town",
+  // Added to address searches so Google Maps looks in the right city.
+  mapsCity: "Riga, Latvia",
+
+  // Areas riders can pick as "best meeting point for you". Drivers just type an address.
+  areas: [
+    "Centrs",
+    "Vecrīga (Old Town)",
+    "Skanste",
+    "Teika",
+    "Mežaparks",
+    "Purvciems",
+    "Pļavnieki",
     "Āgenskalns",
-    "Teika / Purvciems",
     "Imanta",
+    "Ziepniekkalns",
+    "Torņakalns",
+    "Ķengarags",
+    "Čiekurkalns",
+    "Iļģuciems",
   ],
 
   maxSeats: 7,

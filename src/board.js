@@ -56,6 +56,12 @@ function time(value) {
   return v;
 }
 
+// Time of day. Empty is fine when the driver or rider doesn't know yet.
+function timeOptional(value) {
+  if (value == null || String(value).trim() === "") return "";
+  return time(value);
+}
+
 function seats(value) {
   const n = Number(value);
   if (!Number.isInteger(n) || n < 1 || n > MAX_SEATS) throw new HttpError(400, `Free seats should be between 1 and ${MAX_SEATS}.`);
@@ -74,6 +80,8 @@ function person(body) {
     contact: text(body.contact, "WhatsApp number", 40, { required: true }),
   };
 }
+
+const PLACE_MAX = 100;
 
 // What every visitor gets: tokens never leave the server.
 export function publicState(s) {
@@ -111,8 +119,10 @@ function backToLooking(s, trip, p, why) {
     leg: trip.leg,
     name: p.name,
     contact: p.contact,
-    pickup: trip.pickup,
-    note: why,
+    area: p.area || "",
+    pickup: p.pickup || trip.pickup,
+    time: p.time || "",
+    note: p.note ? `${why}. ${p.note}` : why,
     createdAt: Date.now(),
   });
 }
@@ -166,12 +176,15 @@ async function route(request, s, env) {
     if (parts.length === 1 && method === "POST") {
       if (itemCount(s) >= MAX_ITEMS) throw new HttpError(429, "The board is full. Ask the organizer to tidy up.");
       const p = person({ name: body.driver, contact: body.contact });
+      const flexible = !!body.flexible;
       const trip = {
         id: newId(),
         token: newToken(),
         leg: legId(body.leg),
-        time: time(body.time),
-        pickup: text(body.pickup, "Meeting point", 60, { required: true }),
+        // flexible = "not sure yet": the time may be left empty or be a rough guess
+        flexible,
+        time: flexible ? timeOptional(body.time) : time(body.time),
+        pickup: text(body.pickup, "Address", PLACE_MAX, { required: true }),
         seats: seats(body.seats),
         luggage: luggage(body.luggage),
         driver: p.name,
@@ -191,8 +204,12 @@ async function route(request, s, env) {
     // PATCH /api/trips/:id  -> driver edits their ride
     if (parts.length === 2 && method === "PATCH") {
       if (!isDriver && !isAdmin) throw new HttpError(403, "Only the driver can change this ride.");
-      if ("time" in body) trip.time = time(body.time);
-      if ("pickup" in body) trip.pickup = text(body.pickup, "Meeting point", 60, { required: true });
+      if ("flexible" in body) trip.flexible = !!body.flexible;
+      if ("time" in body || "flexible" in body) {
+        const t = "time" in body ? body.time : trip.time;
+        trip.time = trip.flexible ? timeOptional(t) : time(t);
+      }
+      if ("pickup" in body) trip.pickup = text(body.pickup, "Address", PLACE_MAX, { required: true });
       if ("luggage" in body) trip.luggage = luggage(body.luggage);
       if ("note" in body) trip.note = multiline(body.note, "Note", 280);
       if ("driver" in body) trip.driver = text(body.driver, "Name", 40, { required: true });
@@ -235,11 +252,30 @@ async function route(request, s, env) {
         if (!byRider && !isDriver && !isAdmin) throw new HttpError(403, "You can't move this person.");
         if (req.leg !== trip.leg) throw new HttpError(409, "That person is looking for a ride on a different day.");
         s.requests = s.requests.filter((r) => r !== req);
-        trip.passengers.push({ id: req.id, token: req.token, name: req.name, contact: req.contact, addedAt: Date.now() });
+        trip.passengers.push({
+          id: req.id,
+          token: req.token,
+          name: req.name,
+          contact: req.contact,
+          area: req.area || "",
+          pickup: req.pickup || "",
+          time: req.time || "",
+          note: req.note || "",
+          addedAt: Date.now(),
+        });
         return ok({ id: req.id });
       }
       if (itemCount(s) >= MAX_ITEMS) throw new HttpError(429, "The board is full. Ask the organizer to tidy up.");
-      const p = { id: newId(), token: newToken(), ...person(body), addedAt: Date.now() };
+      const p = {
+        id: newId(),
+        token: newToken(),
+        ...person(body),
+        area: "",
+        pickup: text(body.pickup, "Pickup spot", PLACE_MAX),
+        time: "",
+        note: "",
+        addedAt: Date.now(),
+      };
       trip.passengers.push(p);
       return ok({ id: p.id, token: p.token });
     }
@@ -266,7 +302,9 @@ async function route(request, s, env) {
         token: newToken(),
         leg: legId(body.leg),
         ...person(body),
-        pickup: text(body.pickup, "Meeting point", 60),
+        area: text(body.area, "Area", 40),
+        pickup: text(body.pickup, "Address", PLACE_MAX),
+        time: timeOptional(body.time),
         note: multiline(body.note, "Note", 200),
         createdAt: Date.now(),
       };

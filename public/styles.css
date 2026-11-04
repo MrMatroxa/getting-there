@@ -330,3 +330,28 @@ a { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* Addresses, flexible times, passenger details */
+.map-link { color: inherit; text-decoration: underline; text-decoration-color: var(--lamp); text-underline-offset: 3px; }
+.map-link:hover { color: var(--accent); }
+.trip-time .t.tbd { font-size: .9rem; color: var(--muted); }
+.flex-note { margin: 0; font-size: .85rem; color: var(--warn); font-weight: 600; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: .92rem; cursor: pointer; }
+.check input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+
+.pax-list, .mine-pax, .pick-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.pax-list li, .pick-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center;
+  padding: 8px 0; border-top: 1px solid var(--line);
+}
+.pax-list li.me .name { color: var(--accent); }
+.pax-main { min-width: 0; display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; }
+.pax-main .name { font-weight: 600; }
+.pax-main .from, .mine-pax .from { color: var(--muted); font-size: .85rem; }
+
+.mine li.mine-trip { display: grid; gap: 6px; align-items: stretch; }
+.mine-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.mine-pax li { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; padding: 4px 0 4px 12px; border-left: 2px solid var(--accent); }
+.mine-pax .name { font-weight: 600; }
+.mine-empty { margin: 0; color: var(--muted); font-size: .88rem; padding-left: 12px; }
+.mine li.mine-trip > .btn { justify-self: start; }

@@ -25,6 +25,7 @@
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+  const AREAS = C.areas || ["Centrs", "Vecrīga (Old Town)", "Skanste", "Teika", "Purvciems", "Pļavnieki", "Āgenskalns", "Imanta"];
   const legs = C.legs;
   const legById = Object.fromEntries(legs.map((l) => [l.id, l]));
 
@@ -40,13 +41,36 @@
   const legDirShort = (leg) => (leg.direction === "to" ? "there" : "back");
   const legName = (leg) => `${legDay(leg, true)} · ${legDirShort(leg)}`;
 
+  const isBack = (leg) => !!leg && leg.direction === "from";
+
+  // Free-text addresses open in Google Maps.
+  function mapsUrl(place) {
+    const q = [place, C.mapsCity].filter(Boolean).join(", ");
+    return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q);
+  }
+  const placeLink = (place) =>
+    `<a class="map-link" href="${esc(mapsUrl(place))}" target="_blank" rel="noopener" title="Open in Google Maps">${esc(place)}</a>`;
+
+  // Time shown on a ride or request. Empty = nobody knows yet.
+  const timeText = (t) => (t.time ? (t.flexible ? "~" + t.time : t.time) : "TBD");
+
   function route(trip) {
     const leg = legById[trip.leg];
     const there = C.destinationShort;
     const arrow = '<span class="arrow" aria-hidden="true">→</span>';
-    if (leg && leg.direction === "from") return `${esc(there)} ${arrow} ${esc(trip.pickup)}`;
-    return `${esc(trip.pickup)} ${arrow} ${esc(there)}`;
+    if (isBack(leg)) return `${esc(there)} ${arrow} ${placeLink(trip.pickup)}`;
+    return `${placeLink(trip.pickup)} ${arrow} ${esc(there)}`;
   }
+
+  // Where a person wants to meet or be dropped off: "Pļavnieki · Spice"
+  function wantsHtml(r, leg) {
+    const bits = [];
+    if (r.area) bits.push(esc(r.area));
+    if (r.pickup) bits.push(placeLink(r.pickup));
+    if (!bits.length) return "";
+    return `<span class="from">${isBack(leg) ? "drop-off" : "from"} ${bits.join(" · ")}</span>`;
+  }
+  const aroundHtml = (r) => (r.time ? `<span class="from">around ${esc(r.time)}</span>` : "");
 
   // Turns what people type into a wa.me link when it looks like a phone number.
   function waNumber(contact) {
@@ -140,7 +164,8 @@
     return { trips: trips.length, offered, taken, free: offered - taken, looking, short: Math.max(0, looking - (offered - taken)) };
   }
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-  const byTime = (a, b) => a.time.localeCompare(b.time) || a.createdAt - b.createdAt;
+  // Rides with no time yet go last.
+  const byTime = (a, b) => (a.time ? 0 : 1) - (b.time ? 0 : 1) || a.time.localeCompare(b.time) || a.createdAt - b.createdAt;
 
   // ---------- rendering ----------
   function render() {
@@ -162,15 +187,27 @@
     const rows = [];
     for (const t of data.trips.slice().sort(byTime)) {
       const leg = legById[t.leg];
+      const when = `${leg ? legName(leg) : t.leg} ${timeText(t)}`;
       if (isMine(t.id)) {
+        const looking = data.requests.filter((r) => r.leg === t.leg).length;
+        const free = t.seats - t.passengers.length;
+        const paxList = t.passengers.length
+          ? `<ul class="mine-pax">${t.passengers
+              .map((p) => `<li><span class="name">${esc(p.name)}</span>${contactHtml(p.contact)}${wantsHtml(p, leg)}${aroundHtml(p)}</li>`)
+              .join("")}</ul>`
+          : `<p class="mine-empty">Nobody in your car yet.</p>`;
+        const add =
+          free > 0 && looking
+            ? `<button type="button" class="btn small" data-act="add-someone" data-trip="${esc(t.id)}">Add someone (${looking} looking)</button>`
+            : "";
         rows.push(
-          `<li><span class="what">You're driving · ${t.passengers.length}/${t.seats} seats taken</span><span class="when">${esc(leg ? legName(leg) : t.leg)} ${esc(t.time)}</span></li>`
+          `<li class="mine-trip"><div class="mine-head"><span class="what">You're driving · ${t.passengers.length}/${t.seats} seats taken</span><span class="when">${esc(when)}</span></div>${paxList}${add}</li>`
         );
       }
       for (const p of t.passengers) {
         if (isMine(p.id)) {
           rows.push(
-            `<li><span class="what">Seat in ${esc(t.driver)}'s car</span><span class="when">${esc(leg ? legName(leg) : t.leg)} ${esc(t.time)} · ${esc(t.pickup)}</span></li>`
+            `<li><span class="what">Seat in ${esc(t.driver)}'s car</span><span class="when">${esc(when)} · ${esc(t.pickup)}</span>${contactHtml(t.contact)}</li>`
           );
         }
       }
@@ -243,15 +280,18 @@
     const dots = Array.from({ length: t.seats }, (_, i) => `<span class="dot${i < t.passengers.length ? " taken" : ""}"></span>`).join("");
     const canManage = driver || adminKey;
 
-    const pax = t.passengers
-      .map((p) => {
-        const mineP = isMine(p.id);
-        const removable = canManage && !mineP;
-        return `<li class="${mineP ? "me" : ""}">${esc(p.name)}${mineP ? " (you)" : ""}${
-          removable ? `<button type="button" data-act="remove-pax" data-trip="${esc(t.id)}" data-pax="${esc(p.id)}" aria-label="Remove ${esc(p.name)}">×</button>` : ""
-        }</li>`;
-      })
-      .join("");
+    const pax = canManage
+      ? t.passengers
+          .map((p) => {
+            const mineP = isMine(p.id);
+            const details = wantsHtml(p, leg) + aroundHtml(p) + (p.note ? `<span class="from">${esc(p.note)}</span>` : "");
+            return `<li class="${mineP ? "me" : ""}"><div class="pax-main"><span class="name">${esc(p.name)}${mineP ? " (you)" : ""}</span>${contactHtml(p.contact)}${details}</div>${
+              mineP ? "" : `<button type="button" class="link danger" data-act="remove-pax" data-trip="${esc(t.id)}" data-pax="${esc(p.id)}" aria-label="Remove ${esc(p.name)}">Remove</button>`
+            }</li>`;
+          })
+          .join("")
+      : t.passengers.map((p) => `<li class="${isMine(p.id) ? "me" : ""}">${esc(p.name)}${isMine(p.id) ? " (you)" : ""}</li>`).join("");
+    const lookingHere = data.requests.filter((r) => r.leg === t.leg).length;
 
     const actions = [];
     if (mySeat) {
@@ -259,13 +299,16 @@
     } else if (!driver && free > 0) {
       actions.push(`<button type="button" class="btn small primary" data-act="take" data-trip="${esc(t.id)}">Take a seat</button>`);
     }
+    if (canManage && free > 0 && lookingHere) {
+      actions.push(`<button type="button" class="btn small" data-act="add-someone" data-trip="${esc(t.id)}">Add someone (${lookingHere} looking)</button>`);
+    }
     if (canManage) {
       actions.push(`<button type="button" class="link" data-act="edit-trip" data-trip="${esc(t.id)}">Edit ride</button>`);
       actions.push(`<button type="button" class="link danger" data-act="cancel-trip" data-trip="${esc(t.id)}">Cancel ride</button>`);
     }
 
     return `<article class="trip${free <= 0 ? " full" : ""}${driver ? " is-mine" : ""}">
-      <div class="trip-time"><span class="t">${esc(t.time)}</span><span class="d">${esc(leg ? dayShort(leg) : "")}</span></div>
+      <div class="trip-time"><span class="t${t.time ? "" : " tbd"}">${esc(timeText(t))}</span><span class="d">${esc(leg ? dayShort(leg) : "")}</span></div>
       <div class="trip-main">
         <div class="route">${route(t)}</div>
         <div class="who"><span class="role">Driver</span><span class="name">${esc(t.driver)}${driver ? " (you)" : ""}</span>${contactHtml(t.contact)}</div>
@@ -274,7 +317,8 @@
           <span class="seat-text${free > 0 ? " free" : ""}">${free > 0 ? `${free} of ${t.seats} free` : "Full"}</span>
           <span class="trunk">${esc(TRUNK[t.luggage] || "")}</span>
         </div>
-        ${pax ? `<ul class="pax" aria-label="Passengers">${pax}</ul>` : ""}
+        ${t.flexible ? `<p class="flex-note">${t.time ? "Time is a rough guess" : "Time not decided yet"}. Agree it with ${esc(t.driver)}.</p>` : ""}
+        ${pax ? `<ul class="${canManage ? "pax-list" : "pax"}" aria-label="Passengers">${pax}</ul>` : ""}
         ${t.note ? `<p class="note">${esc(t.note)}</p>` : ""}
         ${actions.length ? `<div class="trip-actions">${actions.join("")}</div>` : ""}
       </div>
@@ -293,7 +337,7 @@
     }
     return `<li class="req${own ? " me" : ""}">
       <div class="req-main">
-        <div class="req-top"><span class="name">${esc(r.name)}</span>${r.pickup ? `<span class="from">${leg.direction === "to" ? "from" : "to"} ${esc(r.pickup)}</span>` : ""}</div>
+        <div class="req-top"><span class="name">${esc(r.name)}</span>${wantsHtml(r, leg)}${aroundHtml(r)}</div>
         <div class="req-top">${contactHtml(r.contact)}</div>
         ${r.note ? `<p class="note">${esc(r.note)}</p>` : ""}
       </div>
@@ -308,6 +352,7 @@
   function openDialog({ title, body, submit = "Save", cancel = "Cancel", danger = false, onSubmit, onOpen }) {
     $("#dlg-title").textContent = title;
     $("#dlg-body").innerHTML = body;
+    $("#dlg-body").onclick = null;
     $("#dlg-error").hidden = true;
     const btn = $("#dlg-submit");
     btn.textContent = submit;
@@ -377,43 +422,17 @@
   }
 
   // ---------- form pieces ----------
-  const pickupOptions = (selected) => {
-    const known = C.pickupPoints.includes(selected);
-    const opts = C.pickupPoints.map((p) => `<option ${p === selected ? "selected" : ""}>${esc(p)}</option>`).join("");
-    return `${opts}<option value="__other" ${selected && !known ? "selected" : ""}>Somewhere else…</option>`;
-  };
-  function pickupField(selected = "", label = "Meeting point in the city", required = true) {
-    const known = !selected || C.pickupPoints.includes(selected);
-    return `<label class="field"><span>${esc(label)}</span>
-        <select id="f-pickup" name="pickup" ${required ? "required" : ""}>
-          ${required ? "" : `<option value="" ${!selected ? "selected" : ""}>Anywhere is fine</option>`}
-          ${pickupOptions(selected || (required ? C.pickupPoints[0] : ""))}
-        </select></label>
-      <label class="field" id="f-other-wrap" ${known ? "hidden" : ""}><span>Where exactly?</span>
-        <input id="f-pickup-other" name="pickupOther" maxlength="60" value="${known ? "" : esc(selected)}" placeholder="e.g. Rimi on Brīvības iela"></label>`;
-  }
-  function wirePickup(root) {
-    const sel = $("#f-pickup", root);
-    const wrap = $("#f-other-wrap", root);
-    const other = $("#f-pickup-other", root);
-    const sync = () => {
-      const on = sel.value === "__other";
-      wrap.hidden = !on;
-      other.required = on;
-    };
-    sel.addEventListener("change", () => {
-      sync();
-      if (sel.value === "__other") other.focus();
-    });
-    sync();
-  }
-  const readPickup = (fd) => (fd.get("pickup") === "__other" ? String(fd.get("pickupOther") || "").trim() : String(fd.get("pickup") || ""));
-
   const personFields = (name, contact, nameLabel = "Your name") => `
     <div class="row2">
       <label class="field"><span>${esc(nameLabel)}</span><input id="f-name" name="name" required maxlength="40" autocomplete="name" value="${esc(name)}"></label>
       <label class="field"><span>WhatsApp number</span><input id="f-contact" name="contact" required maxlength="40" inputmode="tel" autocomplete="tel" value="${esc(contact)}" placeholder="+371 2…"></label>
     </div>`;
+
+  // Wording that depends on whether the trip goes there or back.
+  const placeWords = (back) =>
+    back
+      ? { label: "Drop-off in the city", hint: "Where you'll drop people off. Opens in Google Maps." }
+      : { label: "Meeting point in the city", hint: "Where you'll pick people up. Opens in Google Maps." };
 
   // ---------- flows ----------
   function driveForm(trip, presetLeg, prefill) {
@@ -421,6 +440,7 @@
     const v = trip || {
       leg: presetLeg || (filter !== "all" ? filter : legs[0].id),
       time: "",
+      flexible: false,
       pickup: "",
       seats: 3,
       luggage: "normal",
@@ -446,19 +466,41 @@
         <fieldset class="fieldset"><legend>Which trip?</legend><div class="choices">${legChoices}</div>
           ${editing ? "" : "<small>Driving both ways? Post this one, then you can add the trip back.</small>"}</fieldset>
         <div class="row2">
-          <label class="field"><span>Leaving at</span><input id="f-time" type="time" name="time" required value="${esc(v.time)}"></label>
-          <div class="field"><span>Free seats</span>
+          <label class="field"><span id="f-time-label">Leaving at</span><input id="f-time" type="time" name="time" required value="${esc(v.time)}"></label>
+          <div class="field"><span>People you can take</span>
             <div class="stepper"><button type="button" data-step="-1" aria-label="Fewer seats">−</button><output id="f-seats-out">${v.seats}</output><button type="button" data-step="1" aria-label="More seats">+</button></div>
             <input type="hidden" name="seats" id="f-seats" value="${v.seats}">
-            <small>Not counting you.</small>
           </div>
         </div>
-        ${pickupField(v.pickup, "Meeting point in the city")}
+        <label class="check" id="f-flex-wrap"><input type="checkbox" id="f-flex" name="flexible" ${v.flexible ? "checked" : ""}><span>Not sure when I'm leaving yet. I'll agree it with passengers.</span></label>
+        <label class="field"><span id="f-place-label"></span><input id="f-pickup" name="pickup" required maxlength="100" value="${esc(v.pickup)}" placeholder="e.g. Brīvības iela 99, or Rimi Origo" autocomplete="off"><small id="f-place-hint"></small></label>
         <fieldset class="fieldset"><legend>Trunk space</legend><div class="choices">${trunk}</div></fieldset>
         ${personFields(v.driver, v.contact)}
-        <label class="field"><span>Note <small>(optional)</small></span><textarea id="f-note" name="note" maxlength="280" placeholder="e.g. Can pick up anywhere along the way, bringing the speakers">${esc(v.note)}</textarea></label>`,
+        <label class="field"><span>Note <small>(optional)</small></span><textarea id="f-note" name="note" maxlength="280" placeholder="e.g. Can pick up anywhere along the way">${esc(v.note)}</textarea></label>`,
       onOpen(root) {
-        wirePickup(root);
+        const flex = $("#f-flex", root);
+        const timeIn = $("#f-time", root);
+        const syncLeg = () => {
+          const chosen = $("input[name=leg]:checked", root);
+          const back = isBack(chosen && legById[chosen.value]);
+          const words = placeWords(back);
+          $("#f-place-label", root).textContent = words.label;
+          $("#f-place-hint", root).textContent = words.hint;
+          // "Not sure yet" is mainly for the way back, but never hide it once it's on.
+          $("#f-flex-wrap", root).hidden = !back && !flex.checked;
+        };
+        const syncFlex = () => {
+          timeIn.required = !flex.checked;
+          $("#f-time-label", root).textContent = flex.checked ? "Leaving around (optional)" : "Leaving at";
+        };
+        $$("input[name=leg]", root).forEach((r) => r.addEventListener("change", syncLeg));
+        flex.addEventListener("change", () => {
+          syncFlex();
+          syncLeg();
+        });
+        syncLeg();
+        syncFlex();
+
         const out = $("#f-seats-out", root);
         const input = $("#f-seats", root);
         const min = trip ? Math.max(1, trip.passengers.length) : 1;
@@ -473,9 +515,10 @@
       async onSubmit(fd) {
         const body = {
           leg: fd.get("leg"),
-          time: fd.get("time"),
+          time: fd.get("time") || "",
+          flexible: fd.get("flexible") === "on",
           seats: Number(fd.get("seats")),
-          pickup: readPickup(fd),
+          pickup: String(fd.get("pickup") || "").trim(),
           luggage: fd.get("luggage") || "normal",
           driver: String(fd.get("name")).trim(),
           contact: String(fd.get("contact")).trim(),
@@ -498,7 +541,7 @@
             submit: "Add trip back",
             cancel: "Not now",
             onSubmit: async () => {
-              driveForm(null, back.id, { seats: body.seats, luggage: body.luggage, pickup: body.pickup, note: "" });
+              driveForm(null, back.id, { seats: body.seats, luggage: body.luggage, pickup: body.pickup, flexible: true, note: "" });
               return true;
             },
           });
@@ -519,23 +562,39 @@
         return `<label class="choice"><input type="checkbox" name="legs" value="${esc(l.id)}" ${checked ? "checked" : ""} ${busy ? "disabled" : ""}><span>${esc(legName(l))}${busy ? " ✓" : ""}</span></label>`;
       })
       .join("");
+    const areaOpts = AREAS.map((a) => `<option>${esc(a)}</option>`).join("");
     openDialog({
       title: "I need a ride",
       submit: "Add me to the list",
       body: `
         <p class="dlg-lead">You'll show up under <strong>Still looking</strong> so drivers can add you. You can also just pick a car with free seats.</p>
         <fieldset class="fieldset"><legend>Which trips?</legend><div class="choices">${choices}</div><small>Pick every trip you still need. ✓ = already sorted or listed.</small></fieldset>
-        ${pickupField("", "Best meeting point for you", false)}
+        <label class="field"><span id="f-area-label">Best meeting point for you</span>
+          <select id="f-area" name="area"><option value="">Anywhere is fine</option>${areaOpts}</select></label>
+        <label class="field"><span>Where exactly? <small>(optional)</small></span><input id="f-pickup" name="pickup" maxlength="100" autocomplete="off" placeholder="e.g. Pļavnieki/Brīvības 99/Spice"></label>
+        <label class="field"><span>Roughly what time? <small>(optional)</small></span><input id="f-time" type="time" name="time"><small>Helps drivers see if your plans match. Leave empty if you're flexible.</small></label>
         ${personFields(me.name, me.contact)}
-        <label class="field"><span>Note <small>(optional)</small></span><textarea id="f-note" name="note" maxlength="200" placeholder="e.g. Big bag + sleeping bag, flexible on time"></textarea></label>`,
-      onOpen: wirePickup,
+        <label class="field"><span>Note <small>(optional)</small></span><textarea id="f-note" name="note" maxlength="200" placeholder="e.g. One big bag, flexible on time"></textarea></label>`,
+      onOpen(root) {
+        // Mention drop-off when only return trips are picked.
+        const sync = () => {
+          const picked = $$("input[name=legs]:checked", root).map((i) => legById[i.value]);
+          const allBack = picked.length > 0 && picked.every(isBack);
+          const anyBack = picked.some(isBack);
+          $("#f-area-label", root).textContent = allBack ? "Where should you be dropped off?" : anyBack ? "Best meeting point / drop-off area" : "Best meeting point for you";
+        };
+        $$("input[name=legs]", root).forEach((i) => i.addEventListener("change", sync));
+        sync();
+      },
       async onSubmit(fd) {
         const chosen = fd.getAll("legs");
         if (!chosen.length) throw new Error("Pick at least one trip.");
         const base = {
           name: String(fd.get("name")).trim(),
           contact: String(fd.get("contact")).trim(),
-          pickup: readPickup(fd),
+          area: String(fd.get("area") || ""),
+          pickup: String(fd.get("pickup") || "").trim(),
+          time: String(fd.get("time") || ""),
           note: String(fd.get("note") || ""),
         };
         rememberMe(base.name, base.contact);
@@ -552,26 +611,71 @@
     const t = data.trips.find((x) => x.id === tripId);
     if (!t) return;
     const leg = legById[t.leg];
+    const back = isBack(leg);
     const myReq = data.requests.find((r) => r.leg === t.leg && isMine(r.id));
     const already = data.trips.find((x) => x.leg === t.leg && x.passengers.some((p) => isMine(p.id)));
     openDialog({
       title: "Take a seat",
       submit: "Take the seat",
       body: `
-        <p class="dlg-lead"><strong>${esc(t.driver)}</strong> · ${esc(leg ? legName(leg) : "")} at <strong>${esc(t.time)}</strong> · ${route(t)}</p>
+        <p class="dlg-lead"><strong>${esc(t.driver)}</strong> · ${esc(leg ? legName(leg) : "")} at <strong>${esc(timeText(t))}</strong> · ${route(t)}</p>
         ${already ? `<p class="form-error" style="margin:0">You already have a seat in ${esc(already.driver)}'s car for this trip. Give that one up first if you're switching.</p>` : ""}
-        ${myReq ? `<p class="dlg-lead">You'll come off the Still looking list.</p>` : personFields(me.name, me.contact)}
-        <p class="dlg-lead">Message ${esc(t.driver)} on WhatsApp to agree where exactly to meet.</p>`,
+        ${
+          myReq
+            ? `<p class="dlg-lead">You'll come off the Still looking list.</p>`
+            : personFields(me.name, me.contact) +
+              `<label class="field"><span>${back ? "Where should you be dropped off?" : "Where should they pick you up?"} <small>(optional)</small></span><input name="pickup" maxlength="100" autocomplete="off" placeholder="e.g. Brīvības 99"></label>`
+        }
+        <p class="dlg-lead">Message ${esc(t.driver)} on WhatsApp to agree ${back ? "the drop-off and time" : "where exactly to meet"}.</p>`,
       async onSubmit(fd) {
         if (myReq) {
           await api(`trips/${t.id}/seats`, { method: "POST", body: { requestId: myReq.id }, token: mine[myReq.id] });
         } else {
-          const body = { name: String(fd.get("name")).trim(), contact: String(fd.get("contact")).trim() };
+          const body = { name: String(fd.get("name")).trim(), contact: String(fd.get("contact")).trim(), pickup: String(fd.get("pickup") || "").trim() };
           rememberMe(body.name, body.contact);
           const res = await api(`trips/${t.id}/seats`, { method: "POST", body });
           remember(res.id, res.token);
         }
         toast(`You're in ${t.driver}'s car`);
+      },
+    });
+  }
+
+  // Driver: pick people from the Still looking list for this trip's day.
+  function addPicker(tripId) {
+    const t = data.trips.find((x) => x.id === tripId);
+    if (!t) return closeDialog();
+    const leg = legById[t.leg];
+    const free = t.seats - t.passengers.length;
+    const reqs = data.requests.filter((r) => r.leg === t.leg).sort((a, b) => a.createdAt - b.createdAt);
+    if (!reqs.length || free <= 0) {
+      closeDialog();
+      return;
+    }
+    const rows = reqs
+      .map(
+        (r) => `<li class="pick-row"><div class="pax-main"><span class="name">${esc(r.name)}</span>${contactHtml(r.contact)}${wantsHtml(r, leg)}${aroundHtml(r)}${r.note ? `<span class="from">${esc(r.note)}</span>` : ""}</div>
+          <button type="button" class="btn small primary" data-pick="${esc(r.id)}">Add</button></li>`
+      )
+      .join("");
+    openDialog({
+      title: "Add to your car",
+      cancel: "Done",
+      body: `<p class="dlg-lead">${plural(free, "seat", "seats")} left in your ${esc(leg ? legName(leg) : "")} car. Message them on WhatsApp to agree the details.</p><ul class="pick-list">${rows}</ul>`,
+      onOpen(root) {
+        root.onclick = async (e) => {
+          const b = e.target.closest("[data-pick]");
+          if (!b) return;
+          b.disabled = true;
+          try {
+            await api(`trips/${t.id}/seats`, { method: "POST", body: { requestId: b.dataset.pick }, token: mine[t.id] });
+            toast("Added to your car");
+            addPicker(tripId);
+          } catch (err) {
+            b.disabled = false;
+            dialogError(err.message);
+          }
+        };
       },
     });
   }
@@ -585,8 +689,8 @@
       if (!trips.length) lines.push("No cars yet");
       for (const t of trips) {
         const free = t.seats - t.passengers.length;
-        const where = leg.direction === "to" ? `from ${t.pickup}` : `to ${t.pickup}`;
-        lines.push(`• ${t.time} ${t.driver}, ${where}: ${free > 0 ? `${free} free` : "full"} (${t.passengers.length}/${t.seats})`);
+        const where = isBack(leg) ? `drop-off ${t.pickup}` : `from ${t.pickup}`;
+        lines.push(`• ${t.time ? timeText(t) : "time TBD"} ${t.driver}, ${where}: ${free > 0 ? `${free} free` : "full"} (${t.passengers.length}/${t.seats})`);
       }
       if (reqs.length) lines.push(`Still looking: ${reqs.map((r) => r.name).join(", ")}`);
       lines.push("");
@@ -655,7 +759,7 @@
     render();
   });
 
-  $("#board").addEventListener("click", (e) => {
+  const onAct = (e) => {
     const b = e.target.closest("[data-act]");
     if (!b || !data) return;
     const { act, trip: tripId, pax: paxId, req: reqId } = b.dataset;
@@ -663,6 +767,7 @@
 
     if (act === "drive") return driveForm(null, b.dataset.leg);
     if (act === "take") return takeSeat(tripId);
+    if (act === "add-someone") return addPicker(tripId);
     if (act === "edit-trip" && trip) return driveForm(trip);
 
     if (act === "cancel-trip" && trip) {
@@ -704,7 +809,9 @@
         toast("Removed from the list");
       });
     }
-  });
+  };
+  $("#board").addEventListener("click", onAct);
+  $("#mine").addEventListener("click", onAct);
 
   // ---------- event code gate ----------
   function showGate(msg) {
