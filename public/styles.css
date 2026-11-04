@@ -436,3 +436,6 @@ a { color: var(--accent); }
 .trip .route { font-size: 1.25rem; line-height: 1.25; }
 .rd-place { font-size: 1.5rem; }
 @media (max-width: 420px) { .trip .route { font-size: 1.15rem; } .rd-place { font-size: 1.35rem; } }
+
+/* Day headings ("Piektdiena 20. nov.") as large as the ride times */
+.leg-head h3 { font-size: 1.25rem; }
