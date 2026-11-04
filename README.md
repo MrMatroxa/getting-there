@@ -55,7 +55,7 @@ Changed `config.js` later? Run `npm run deploy` again. Rides that are already po
 
 ## How it works
 
-- **Drivers** tap "I'm driving", pick the trip, time, free seats, meeting point and trunk space. After posting a ride to the house, they're offered to add the trip back too.
+- **Drivers** tap "I'm driving", pick the trip, time, free seats, and meeting point. After posting a ride to the house, they're offered to add the trip back too.
 - **Riders** tap "Take a seat" on a car with space, or "I need a ride" to join the Still looking list for one or more trips.
 - **Drivers** can add people from the Still looking list straight into their car, remove passengers, edit or cancel the ride. People who get removed, or whose ride is cancelled, go back on the Still looking list automatically.
 - **Each day's header** shows free seats against people still looking, and turns orange when there aren't enough seats. That's your cue to nudge the group.

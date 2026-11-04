@@ -331,8 +331,6 @@
     </section>`;
   }
 
-  const TRUNK_KEYS = ["roomy", "normal", "tight"];
-
   function renderTrip(trip) {
     const leg = legById[trip.leg];
     const free = trip.seats - trip.passengers.length;
@@ -345,7 +343,6 @@
     const actions = [];
     if (mySeat) actions.push(`<span class="my-seat">${esc(t("yourSeatHere"))}</span>`);
     actions.push(...tripButtons(trip));
-    actions.push(`<button type="button" class="link who-btn" data-act="details" data-trip="${esc(trip.id)}">${esc(t("whoIn", trip.passengers.length))}</button>`);
 
     return `<article class="trip${free <= 0 ? " full" : ""}${driver ? " is-mine" : ""}${mySeat ? " has-me" : ""}" data-card="${esc(trip.id)}">
       <div class="trip-time"><span class="t${trip.time ? "" : " tbd"}">${esc(timeText(trip))}</span><span class="d">${esc(leg ? dayShort(leg) : "")}</span></div>
@@ -355,7 +352,6 @@
         <div class="seatline">
           <span class="dots" aria-hidden="true">${dots}</span>
           <span class="seat-text${free > 0 ? " free" : ""}">${esc(free > 0 ? t("freeOf", free, trip.seats) : t("full"))}</span>
-          <span class="trunk">${esc(t("trunk")[trip.luggage] || "")}</span>
         </div>
         ${trip.flexible ? `<p class="flex-note">${esc(trip.time ? t("flexGuess", trip.driver) : t("flexOpen", trip.driver))}</p>` : ""}
         ${trip.note ? `<p class="note">${esc(trip.note)}</p>` : ""}
@@ -393,37 +389,63 @@
     const free = trip.seats - trip.passengers.length;
     const canManage = isMine(trip.id) || adminKey;
     const you = " " + t("you");
+    const initial = (name) => esc((String(name).trim()[0] || "?").toUpperCase());
     const dots = Array.from({ length: trip.seats }, (_, i) => `<span class="dot${i < trip.passengers.length ? " taken" : ""}"></span>`).join("");
+
     const pax = trip.passengers
       .map((p) => {
         const mineP = isMine(p.id);
-        const details = canManage ? contactHtml(p.contact) + wantsHtml(p, leg) + aroundHtml(p) + noteHtml(p, "span") : "";
-        return `<li class="${mineP ? "me" : ""}"><div class="pax-main"><span class="name">${esc(p.name)}${mineP ? esc(you) : ""}</span>${details}</div>${
-          canManage && !mineP ? removeBtn(trip.id, p) : ""
-        }</li>`;
+        const extra = canManage ? wantsHtml(p, leg) + aroundHtml(p) + noteHtml(p, "span") : "";
+        return `<li class="rd-person${mineP ? " me" : ""}">
+            <span class="rd-avatar">${initial(p.name)}</span>
+            <div class="rd-person-main">
+              <div class="rd-name-line"><span class="rd-name">${esc(p.name)}${mineP ? esc(you) : ""}</span>${canManage ? contactHtml(p.contact) : ""}</div>
+              ${extra ? `<div class="rd-extra">${extra}</div>` : ""}
+            </div>
+            ${canManage && !mineP ? removeBtn(trip.id, p) : ""}
+          </li>`;
       })
       .join("");
+    // Empty seats as rows too, so the list mirrors the rings on the card.
+    const empty = Array.from(
+      { length: Math.max(0, free) },
+      () => `<li class="rd-person empty"><span class="rd-avatar"></span><span class="rd-free">${esc(t("freeSeatRow"))}</span></li>`
+    ).join("");
     const buttons = tripButtons(trip);
+    const notes = [
+      trip.flexible ? `<p class="flex-note">${esc(trip.time ? t("flexGuess", trip.driver) : t("flexOpen", trip.driver))}</p>` : "",
+      trip.note ? `<p class="rd-note">${esc(trip.note)}</p>` : "",
+    ].join("");
+
     openDialog({
       title: `${leg ? legName(leg) : ""} · ${timeText(trip)}`,
       cancel: t("close"),
+      kind: "ride",
       body: `
-        <div class="detail-card">
-          <div class="route">${placeHtml(trip)}</div>
-          <div class="who"><span class="role">${esc(t("driver"))}</span><span class="name">${esc(trip.driver)}${isMine(trip.id) ? esc(you) : ""}</span>${contactHtml(trip.contact)}</div>
-          <div class="seatline">
+        <div class="rd-top">
+          <div class="rd-place">${placeHtml(trip)}</div>
+          <div class="rd-facts">
             <span class="dots" aria-hidden="true">${dots}</span>
             <span class="seat-text${free > 0 ? " free" : ""}">${esc(free > 0 ? t("freeOf", free, trip.seats) : t("full"))}</span>
-            <span class="trunk">${esc(t("trunk")[trip.luggage] || "")}</span>
           </div>
-          ${trip.flexible ? `<p class="flex-note">${esc(trip.time ? t("flexGuess", trip.driver) : t("flexOpen", trip.driver))}</p>` : ""}
-          ${trip.note ? `<p class="note">${esc(trip.note)}</p>` : ""}
         </div>
-        <div class="detail-pax">
-          <h3>${esc(t("passengers"))} (${trip.passengers.length}/${trip.seats})</h3>
-          ${pax ? `<ul class="pax-list">${pax}</ul>` : `<p class="mine-empty">${esc(t("nobodyInCar"))}</p>`}
+
+        <div class="rd-driver">
+          <span class="rd-avatar">${initial(trip.driver)}</span>
+          <div class="rd-person-main">
+            <span class="rd-label">${esc(t("driver"))}</span>
+            <div class="rd-name-line"><span class="rd-name">${esc(trip.driver)}${isMine(trip.id) ? esc(you) : ""}</span>${contactHtml(trip.contact)}</div>
+          </div>
         </div>
-        ${buttons.length ? `<div class="trip-actions">${buttons.join("")}</div>` : ""}`,
+
+        ${notes ? `<div class="rd-notes">${notes}</div>` : ""}
+
+        <div class="rd-pax">
+          <span class="rd-label">${esc(t("passengers"))} · ${trip.passengers.length}/${trip.seats}</span>
+          <ul class="rd-list">${pax}${empty}</ul>
+        </div>
+
+        ${buttons.length ? `<div class="trip-actions rd-actions">${buttons.join("")}</div>` : ""}`,
       onOpen(root) {
         root.onclick = onAct;
       },
@@ -454,7 +476,8 @@
   const dlg = $("#dlg");
   let dlgHandler = null;
 
-  function openDialog({ title, body, submit = t("save"), cancel = t("cancel"), danger = false, onSubmit, onOpen }) {
+  function openDialog({ title, body, submit = t("save"), cancel = t("cancel"), danger = false, onSubmit, onOpen, kind = "" }) {
+    dlg.className = "dlg" + (kind ? " dlg-" + kind : "");
     $("#dlg-title").textContent = title;
     $("#dlg-body").innerHTML = body;
     $("#dlg-body").onclick = null;
@@ -544,7 +567,6 @@
       flexible: false,
       pickup: "",
       seats: 3,
-      luggage: "normal",
       driver: me.name,
       contact: me.contact,
       note: "",
@@ -556,9 +578,6 @@
           `<label class="choice"><input type="radio" name="leg" value="${esc(l.id)}" ${l.id === v.leg ? "checked" : ""} required><span>${esc(legName(l))}</span></label>`
       )
       .join("");
-    const trunk = TRUNK_KEYS.map(
-      (k) => `<label class="choice"><input type="radio" name="luggage" value="${k}" ${k === v.luggage ? "checked" : ""}><span>${esc(t("trunk")[k])}</span></label>`
-    ).join("");
 
     openDialog({
       title: editing ? t("editTitle") : t("offerTitle"),
@@ -575,7 +594,6 @@
         </div>
         <label class="check" id="f-flex-wrap"><input type="checkbox" id="f-flex" name="flexible" ${v.flexible ? "checked" : ""}><span>${esc(t("notSure"))}</span></label>
         <label class="field"><span id="f-place-label"></span><input id="f-pickup" name="pickup" required maxlength="100" value="${esc(v.pickup)}" placeholder="${esc(t("addressExample"))}" autocomplete="off"><small id="f-place-hint"></small></label>
-        <fieldset class="fieldset"><legend>${esc(t("trunkSpace"))}</legend><div class="choices">${trunk}</div></fieldset>
         ${personFields(v.driver, v.contact)}
         <label class="field"><span>${esc(t("note"))} ${opt()}</span><textarea id="f-note" name="note" maxlength="280" placeholder="">${esc(v.note)}</textarea></label>`,
       onOpen(root) {
@@ -621,7 +639,6 @@
           flexible: fd.get("flexible") === "on",
           seats: Number(fd.get("seats")),
           pickup: String(fd.get("pickup") || "").trim(),
-          luggage: fd.get("luggage") || "normal",
           driver: String(fd.get("name")).trim(),
           contact: String(fd.get("contact")).trim(),
           note: String(fd.get("note") || ""),
@@ -650,7 +667,7 @@
             submit: t("addTripBack"),
             cancel: t("notNow"),
             onSubmit: async () => {
-              driveForm(null, back.id, { seats: body.seats, luggage: body.luggage, pickup: body.pickup, flexible: true, note: "" });
+              driveForm(null, back.id, { seats: body.seats, pickup: body.pickup, flexible: true, note: "" });
               return true;
             },
           });
