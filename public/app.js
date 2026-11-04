@@ -77,12 +77,10 @@
   // Time shown on a ride or request. Empty = nobody knows yet.
   const timeText = (x) => (x.time ? (x.flexible ? "~" + x.time : x.time) : t("tbd"));
 
-  function route(trip) {
-    const leg = legById[trip.leg];
-    const there = ct("destinationShort");
-    const arrow = '<span class="arrow" aria-hidden="true">→</span>';
-    if (isBack(leg)) return `${esc(there)} ${arrow} ${placeLink(trip.pickup)}`;
-    return `${placeLink(trip.pickup)} ${arrow} ${esc(there)}`;
+  // The one place that matters on a card: where the driver meets people (way there)
+  // or drops them off (way back). Everyone knows the other end.
+  function placeHtml(trip) {
+    return placeLink(trip.pickup);
   }
 
   // Where a person wants to meet or be dropped off: "Pļavnieki · Spice"
@@ -133,7 +131,7 @@
   let me = store.get("gt.me", { name: "", contact: "" });
   let code = store.get("gt.code", "");
   let adminKey = store.get("gt.admin", "");
-  let filter = store.get("gt.filter", "all");
+  let filter = store.get("gt.filter", "all"); // "all" or one leg id
   if (filter !== "all" && !legById[filter]) filter = "all";
   let lastLoaded = 0;
 
@@ -216,6 +214,12 @@
     $("#updated").textContent = t("updated", hm);
   }
 
+  // A ride this phone has a seat in (or drives) going the same way as `leg`, on another day.
+  const mySeatSameWay = (leg) =>
+    data.trips.find(
+      (x) => x.leg !== leg.id && legById[x.leg] && legById[x.leg].direction === leg.direction && (isMine(x.id) || x.passengers.some((p) => isMine(p.id)))
+    );
+
   const removeBtn = (tripId, p) =>
     `<button type="button" class="link danger" data-act="remove-pax" data-trip="${esc(tripId)}" data-pax="${esc(p.id)}" aria-label="${esc(t("removeName", p.name))}">${esc(t("remove"))}</button>`;
 
@@ -254,7 +258,14 @@
     for (const r of data.requests) {
       if (isMine(r.id)) {
         const leg = legById[r.leg];
-        rows.push(`<li><span class="what">${esc(t("youLook"))}</span><span class="when">${esc(leg ? legName(leg) : r.leg)}</span></li>`);
+        const seat = leg && mySeatSameWay(leg);
+        rows.push(
+          `<li><span class="what">${esc(t("youLook"))}</span><span class="when">${esc(leg ? legName(leg) : r.leg)}</span>${
+            seat
+              ? `<span class="also-listed">${esc(t("alsoListed", legName(legById[seat.leg])))}</span><button type="button" class="link danger" data-act="del-req" data-req="${esc(r.id)}">${esc(t("remove"))}</button>`
+              : ""
+          }</li>`
+        );
       }
     }
     const el = $("#mine");
@@ -262,6 +273,7 @@
     el.innerHTML = rows.length ? `<h2>${esc(t("yourRides"))}</h2><ul>${rows.join("")}</ul>` : "";
   }
 
+  // Day buttons: all days, or just one.
   function renderLegChips() {
     const chips = [
       `<button type="button" class="leg-chip" data-leg="all" aria-pressed="${filter === "all"}"><span class="l1">${esc(t("allDays"))}</span><span class="l2">${esc(t("cars", data.trips.length))}</span></button>`,
@@ -276,9 +288,19 @@
     $("#legs").innerHTML = chips.join("");
   }
 
+  // Two parts: the way there, then the way back, each with its days.
   function renderBoard() {
-    const shown = filter === "all" ? legs : legs.filter((l) => l.id === filter);
-    $("#board").innerHTML = shown.map(renderLeg).join("");
+    const groups = [
+      ["to", t("groupTo", ct("destination"))],
+      ["from", t("groupBack")],
+    ];
+    $("#board").innerHTML = groups
+      .map(([dir, title]) => {
+        const ls = legs.filter((l) => l.direction === dir && (filter === "all" || l.id === filter));
+        if (!ls.length) return "";
+        return `<section class="dir-group"><h2 class="dir-title">${esc(title)}</h2>${ls.map(renderLeg).join("")}</section>`;
+      })
+      .join("");
   }
 
   function renderLeg(leg) {
@@ -301,7 +323,7 @@
 
     return `<section class="leg" id="leg-${esc(leg.id)}">
       <div class="leg-head">
-        <h2>${esc(legDay(leg))}<span class="dir">${esc(legDir(leg))}</span></h2>
+        <h3>${esc(legDay(leg))}</h3>
         ${pill}
       </div>
       ${tripsHtml}
@@ -320,37 +342,15 @@
     const canManage = driver || adminKey;
     const you = " " + t("you");
 
-    const pax = canManage
-      ? trip.passengers
-          .map((p) => {
-            const mineP = isMine(p.id);
-            const details = wantsHtml(p, leg) + aroundHtml(p) + noteHtml(p, "span");
-            return `<li class="${mineP ? "me" : ""}"><div class="pax-main"><span class="name">${esc(p.name)}${mineP ? esc(you) : ""}</span>${contactHtml(p.contact)}${details}</div>${
-              mineP ? "" : removeBtn(trip.id, p)
-            }</li>`;
-          })
-          .join("")
-      : trip.passengers.map((p) => `<li class="${isMine(p.id) ? "me" : ""}">${esc(p.name)}${isMine(p.id) ? esc(you) : ""}</li>`).join("");
-    const lookingHere = data.requests.filter((r) => r.leg === trip.leg).length;
-
     const actions = [];
-    if (mySeat) {
-      actions.push(`<button type="button" class="link danger" data-act="leave" data-trip="${esc(trip.id)}" data-pax="${esc(mySeat.id)}">${esc(t("giveUp"))}</button>`);
-    } else if (!driver && free > 0) {
-      actions.push(`<button type="button" class="btn small primary" data-act="take" data-trip="${esc(trip.id)}">${esc(t("takeSeat"))}</button>`);
-    }
-    if (canManage && free > 0 && lookingHere) {
-      actions.push(`<button type="button" class="btn small" data-act="add-someone" data-trip="${esc(trip.id)}">${esc(t("addSomeone", lookingHere))}</button>`);
-    }
-    if (canManage) {
-      actions.push(`<button type="button" class="link" data-act="edit-trip" data-trip="${esc(trip.id)}">${esc(t("editRide"))}</button>`);
-      actions.push(`<button type="button" class="link danger" data-act="cancel-trip" data-trip="${esc(trip.id)}">${esc(t("cancelRide"))}</button>`);
-    }
+    if (mySeat) actions.push(`<span class="my-seat">${esc(t("yourSeatHere"))}</span>`);
+    actions.push(...tripButtons(trip));
+    actions.push(`<button type="button" class="link who-btn" data-act="details" data-trip="${esc(trip.id)}">${esc(t("whoIn", trip.passengers.length))}</button>`);
 
-    return `<article class="trip${free <= 0 ? " full" : ""}${driver ? " is-mine" : ""}">
+    return `<article class="trip${free <= 0 ? " full" : ""}${driver ? " is-mine" : ""}${mySeat ? " has-me" : ""}" data-card="${esc(trip.id)}">
       <div class="trip-time"><span class="t${trip.time ? "" : " tbd"}">${esc(timeText(trip))}</span><span class="d">${esc(leg ? dayShort(leg) : "")}</span></div>
       <div class="trip-main">
-        <div class="route">${route(trip)}</div>
+        <div class="route">${placeHtml(trip)}</div>
         <div class="who"><span class="role">${esc(t("driver"))}</span><span class="name">${esc(trip.driver)}${driver ? esc(you) : ""}</span>${contactHtml(trip.contact)}</div>
         <div class="seatline">
           <span class="dots" aria-hidden="true">${dots}</span>
@@ -358,11 +358,76 @@
           <span class="trunk">${esc(t("trunk")[trip.luggage] || "")}</span>
         </div>
         ${trip.flexible ? `<p class="flex-note">${esc(trip.time ? t("flexGuess", trip.driver) : t("flexOpen", trip.driver))}</p>` : ""}
-        ${pax ? `<ul class="${canManage ? "pax-list" : "pax"}" aria-label="${esc(t("passengers"))}">${pax}</ul>` : ""}
         ${trip.note ? `<p class="note">${esc(trip.note)}</p>` : ""}
-        ${actions.length ? `<div class="trip-actions">${actions.join("")}</div>` : ""}
+        <div class="trip-actions">${actions.join("")}</div>
       </div>
     </article>`;
+  }
+
+  // Buttons for a ride, shown on its card and in its pop-up.
+  function tripButtons(trip) {
+    const free = trip.seats - trip.passengers.length;
+    const driver = isMine(trip.id);
+    const mySeat = trip.passengers.find((p) => isMine(p.id));
+    const canManage = driver || adminKey;
+    const lookingHere = data.requests.filter((r) => r.leg === trip.leg).length;
+    const id = esc(trip.id);
+    const out = [];
+    if (mySeat) out.push(`<button type="button" class="link danger" data-act="leave" data-trip="${id}" data-pax="${esc(mySeat.id)}">${esc(t("giveUp"))}</button>`);
+    else if (!driver && free > 0) out.push(`<button type="button" class="btn small primary" data-act="take" data-trip="${id}">${esc(t("takeSeat"))}</button>`);
+    if (canManage && free > 0 && lookingHere) {
+      out.push(`<button type="button" class="btn small" data-act="add-someone" data-trip="${id}">${esc(t("addSomeone", lookingHere))}</button>`);
+    }
+    if (canManage) {
+      out.push(`<button type="button" class="link" data-act="edit-trip" data-trip="${id}">${esc(t("editRide"))}</button>`);
+      out.push(`<button type="button" class="link danger" data-act="cancel-trip" data-trip="${id}">${esc(t("cancelRide"))}</button>`);
+    }
+    return out;
+  }
+
+  // Pop-up card for one ride: who's in it, and everything you can do with it.
+  function tripDetails(tripId) {
+    const trip = data.trips.find((x) => x.id === tripId);
+    if (!trip) return;
+    const leg = legById[trip.leg];
+    const free = trip.seats - trip.passengers.length;
+    const canManage = isMine(trip.id) || adminKey;
+    const you = " " + t("you");
+    const dots = Array.from({ length: trip.seats }, (_, i) => `<span class="dot${i < trip.passengers.length ? " taken" : ""}"></span>`).join("");
+    const pax = trip.passengers
+      .map((p) => {
+        const mineP = isMine(p.id);
+        const details = canManage ? contactHtml(p.contact) + wantsHtml(p, leg) + aroundHtml(p) + noteHtml(p, "span") : "";
+        return `<li class="${mineP ? "me" : ""}"><div class="pax-main"><span class="name">${esc(p.name)}${mineP ? esc(you) : ""}</span>${details}</div>${
+          canManage && !mineP ? removeBtn(trip.id, p) : ""
+        }</li>`;
+      })
+      .join("");
+    const buttons = tripButtons(trip);
+    openDialog({
+      title: `${leg ? legName(leg) : ""} · ${timeText(trip)}`,
+      cancel: t("close"),
+      body: `
+        <div class="detail-card">
+          <div class="route">${placeHtml(trip)}</div>
+          <div class="who"><span class="role">${esc(t("driver"))}</span><span class="name">${esc(trip.driver)}${isMine(trip.id) ? esc(you) : ""}</span>${contactHtml(trip.contact)}</div>
+          <div class="seatline">
+            <span class="dots" aria-hidden="true">${dots}</span>
+            <span class="seat-text${free > 0 ? " free" : ""}">${esc(free > 0 ? t("freeOf", free, trip.seats) : t("full"))}</span>
+            <span class="trunk">${esc(t("trunk")[trip.luggage] || "")}</span>
+          </div>
+          ${trip.flexible ? `<p class="flex-note">${esc(trip.time ? t("flexGuess", trip.driver) : t("flexOpen", trip.driver))}</p>` : ""}
+          ${trip.note ? `<p class="note">${esc(trip.note)}</p>` : ""}
+        </div>
+        <div class="detail-pax">
+          <h3>${esc(t("passengers"))} (${trip.passengers.length}/${trip.seats})</h3>
+          ${pax ? `<ul class="pax-list">${pax}</ul>` : `<p class="mine-empty">${esc(t("nobodyInCar"))}</p>`}
+        </div>
+        ${buttons.length ? `<div class="trip-actions">${buttons.join("")}</div>` : ""}`,
+      onOpen(root) {
+        root.onclick = onAct;
+      },
+    });
   }
 
   function renderRequest(r, leg) {
@@ -662,7 +727,7 @@
       title: t("takeTitle"),
       submit: t("takeSubmit"),
       body: `
-        <p class="dlg-lead">${t("takeLead", esc(trip.driver), esc(leg ? legName(leg) : ""), esc(timeText(trip)), route(trip))}</p>
+        <p class="dlg-lead">${t("takeLead", esc(trip.driver), esc(leg ? legName(leg) : ""), trip.time ? esc(timeText(trip)) : "", placeHtml(trip))}</p>
         ${already ? `<p class="form-error" style="margin:0">${esc(t("alreadySeated", already.driver))}</p>` : ""}
         ${
           myReq
@@ -681,8 +746,29 @@
           remember(res.id, res.token);
         }
         toast(t("inCar", trip.driver));
+        return askAboutOtherDays(leg);
       },
     });
+  }
+
+  // After getting a seat: if this phone is still on the looking list for the same
+  // direction on another day, ask whether that's still needed. Returns true when
+  // the question is shown, so the dialog stays open.
+  function askAboutOtherDays(leg) {
+    if (!leg) return false;
+    const others = data.requests.filter((r) => isMine(r.id) && r.leg !== leg.id && legById[r.leg] && legById[r.leg].direction === leg.direction);
+    if (!others.length) return false;
+    openDialog({
+      title: t("otherDayTitle"),
+      body: `<p class="dlg-lead">${esc(t("otherDayText", others.map((r) => legName(legById[r.leg])).join(", ")))}</p>`,
+      submit: t("takeMeOff"),
+      cancel: t("keepIt"),
+      onSubmit: async () => {
+        for (const r of others) await api(`requests/${r.id}`, { method: "DELETE", token: mine[r.id] });
+        toast(t("removedFromList"));
+      },
+    });
+    return true;
   }
 
   // Driver: pick people from the Still looking list for this trip's day.
@@ -812,11 +898,18 @@
   });
 
   const onAct = (e) => {
+    if (!data) return;
     const b = e.target.closest("[data-act]");
-    if (!b || !data) return;
+    if (!b) {
+      // Tapping a ride card (anywhere but a link or button) opens its pop-up.
+      const card = e.target.closest("[data-card]");
+      if (card && !e.target.closest("a, button")) tripDetails(card.dataset.card);
+      return;
+    }
     const { act, trip: tripId, pax: paxId, req: reqId } = b.dataset;
     const trip = tripId && data.trips.find((x) => x.id === tripId);
 
+    if (act === "details") return tripDetails(tripId);
     if (act === "drive") return driveForm(null, b.dataset.leg);
     if (act === "take") return takeSeat(tripId);
     if (act === "add-someone") return addPicker(tripId);

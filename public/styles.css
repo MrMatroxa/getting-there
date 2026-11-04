@@ -360,3 +360,29 @@ a { color: var(--accent); }
 .top { position: relative; }
 .lang-btn { position: absolute; top: 0; right: 0; font-size: .88rem; }
 .top h1 { padding-right: 84px; }
+
+/* There / back sections, compact cards */
+.board { gap: 40px; }
+.dir-group { display: grid; gap: 22px; }
+.dir-title {
+  margin: 0; padding-bottom: 8px; border-bottom: 2px solid var(--ink);
+  font: 700 1.3rem/1.2 var(--font-display); letter-spacing: -.01em;
+}
+.leg-head h3 { margin: 0; font: 700 1.02rem/1.2 var(--font-body); }
+.route .place-label { color: var(--muted); font-weight: 500; font-size: .88rem; margin-right: 2px; }
+.my-seat { margin: 0; font-size: .85rem; font-weight: 600; color: var(--accent); }
+.trip.has-me { border-color: var(--accent); }
+.link.toggle { margin-left: auto; }
+.trip-more { display: grid; gap: 8px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.trip-more .pax-list li:first-child { border-top: 0; }
+.also-listed { flex-basis: 100%; font-size: .85rem; color: var(--warn); font-weight: 600; }
+
+/* Ride cards open a pop-up */
+.trip[data-card] { cursor: pointer; }
+.trip[data-card]:hover { border-color: var(--muted); }
+.trip.is-mine[data-card]:hover, .trip.has-me[data-card]:hover { border-color: var(--accent); }
+.link.who-btn { margin-left: auto; }
+.detail-card { display: grid; gap: 8px; }
+.detail-pax { display: grid; gap: 4px; }
+.detail-pax h3 { margin: 0; font: 700 .76rem/1.2 var(--font-body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.dlg-body .trip-actions { padding-bottom: 4px; }
