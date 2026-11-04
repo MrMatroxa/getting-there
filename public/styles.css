@@ -241,7 +241,7 @@ a { color: var(--accent); }
 .req .req-top { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
 .req .name { font-weight: 600; }
 .req .from { color: var(--muted); font-size: .88rem; }
-.req.me .name::after { content: " (you)"; color: var(--accent); font-weight: 500; }
+.req.me .name::after { content: " " attr(data-you); color: var(--accent); font-weight: 500; }
 .req-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: end; }
 
 .empty-leg {
@@ -355,3 +355,8 @@ a { color: var(--accent); }
 .mine-pax .name { font-weight: 600; }
 .mine-empty { margin: 0; color: var(--muted); font-size: .88rem; padding-left: 12px; }
 .mine li.mine-trip > .btn { justify-self: start; }
+
+/* Language switch, top right of the header */
+.top { position: relative; }
+.lang-btn { position: absolute; top: 0; right: 0; font-size: .88rem; }
+.top h1 { padding-right: 84px; }

@@ -8,6 +8,16 @@ window.CONFIG = {
   destinationShort: "Rezidence Kurzeme",
   venueNote: "The exact address is pinned in the WhatsApp group.",
 
+  // Language people see first: "lv" or "en". Everyone can switch at the top of the page.
+  defaultLanguage: "lv",
+
+  // Latvian versions of the wording above. Leave a line out to show the English one.
+  lv: {
+    eventName: "Getting there",
+    tagline: "Braucieni uz viesu namu un atpakaļ. Izvēlies auto vai pievieno savu.",
+    venueNote: "Precīza adrese ir piesprausta WhatsApp grupā.",
+  },
+
   // Optional: your WhatsApp group invite link, shown in the footer.
   whatsappGroupUrl: "",
 
@@ -29,7 +39,7 @@ window.CONFIG = {
   // Areas riders can pick as "best meeting point for you". Drivers just type an address.
   areas: [
     "Centrs",
-    "Vecrīga (Old Town)",
+    "Vecrīga",
     "Skanste",
     "Teika",
     "Mežaparks",

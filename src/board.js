@@ -20,6 +20,55 @@ export function emptyState() {
 const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 10);
 const newToken = () => crypto.randomUUID();
 
+// Latvian versions of every error message, picked when the page sends x-lang: lv.
+const LV_LABELS = {
+  Name: "Vārds",
+  "WhatsApp number": "WhatsApp numurs",
+  Day: "Diena",
+  Time: "Laiks",
+  Note: "Piezīme",
+  Address: "Adrese",
+  "Pickup spot": "Satikšanās vieta",
+  Area: "Rajons",
+  "Trunk space": "Bagāžnieks",
+};
+const LV_FIXED = {
+  "Time should look like 18:30.": "Laikam jāizskatās šādi: 18:30.",
+  "That event code isn't right.": "Pasākuma kods nav pareizs.",
+  "Enter the event code to continue.": "Ievadi pasākuma kodu, lai turpinātu.",
+  "No organizer key is set on the server yet.": "Serverī vēl nav iestatīta organizatora atslēga.",
+  "That organizer key isn't right.": "Organizatora atslēga nav pareiza.",
+  "The board is full. Ask the organizer to tidy up.": "Saraksts ir pilns. Palūdz organizatoram to sakopt.",
+  "That ride doesn't exist any more.": "Šis brauciens vairs nepastāv.",
+  "Only the driver can change this ride.": "Šo braucienu var mainīt tikai šoferis.",
+  "People already have seats on this ride, so the day can't change. Cancel it and add a new one instead.":
+    "Šajā braucienā jau ir pasažieri, tāpēc dienu mainīt nevar. Atcel to un pievieno jaunu.",
+  "Only the driver can cancel this ride.": "Šo braucienu var atcelt tikai šoferis.",
+  "This car is already full.": "Šis auto jau ir pilns.",
+  "That person isn't on the looking list any more.": "Šis cilvēks vairs nav meklētāju sarakstā.",
+  "You can't move this person.": "Tu nevari pārvietot šo cilvēku.",
+  "That person is looking for a ride on a different day.": "Šis cilvēks meklē braucienu citā dienā.",
+  "That seat is already free.": "Šī vieta jau ir brīva.",
+  "You can't change this seat.": "Tu nevari mainīt šo vietu.",
+  "That entry is already gone.": "Šis ieraksts jau ir dzēsts.",
+  "Only the person who posted this can remove it.": "To var dzēst tikai tas, kurš to pievienoja.",
+  "The request couldn't be read.": "Pieprasījumu neizdevās nolasīt.",
+  "Something went wrong on the server. Try again.": "Serverī kaut kas nogāja greizi. Mēģini vēlreiz.",
+  "Not found.": "Nav atrasts.",
+};
+export function toLatvian(msg) {
+  if (LV_FIXED[msg]) return LV_FIXED[msg];
+  let m;
+  const label = (l) => LV_LABELS[l] || l;
+  if ((m = msg.match(/^(.+) looks wrong\.$/))) return `${label(m[1])}: nepareiza vērtība.`;
+  if ((m = msg.match(/^(.+) is required\.$/))) return `${label(m[1])}: obligāti jāaizpilda.`;
+  if ((m = msg.match(/^(.+) is too long \(max (\d+) characters\)\.$/))) return `${label(m[1])}: pārāk garš teksts (maks. ${m[2]} rakstzīmes).`;
+  if ((m = msg.match(/^Free seats should be between 1 and (\d+)\.$/))) return `Brīvo vietu skaitam jābūt no 1 līdz ${m[1]}.`;
+  if ((m = msg.match(/^(\d+) people already have a seat\./)))
+    return `Vietas jau ir aizņēmuši ${m[1]} cilvēki. Vispirms kādu noņem, tad samazini vietu skaitu.`;
+  return msg;
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -113,6 +162,7 @@ async function readBody(request) {
 // ride) goes back on the "still looking" list with the same id and token, so
 // their phone still recognises the entry as theirs.
 function backToLooking(s, trip, p, why) {
+  // why: "cancelled" | "removed"; the page words it in the reader's language.
   s.requests.push({
     id: p.id,
     token: p.token,
@@ -122,7 +172,8 @@ function backToLooking(s, trip, p, why) {
     area: p.area || "",
     pickup: p.pickup || trip.pickup,
     time: p.time || "",
-    note: p.note ? `${why}. ${p.note}` : why,
+    note: p.note || "",
+    relisted: { why, driver: trip.driver },
     createdAt: Date.now(),
   });
 }
@@ -137,9 +188,11 @@ export async function handleApi(request, state, env) {
   try {
     return await route(request, state, env);
   } catch (e) {
-    if (e instanceof HttpError) return { response: json({ error: e.message }, e.status), changed: false };
+    const lv = (request.headers.get("x-lang") || "") === "lv";
+    const say = (msg) => (lv ? toLatvian(msg) : msg);
+    if (e instanceof HttpError) return { response: json({ error: say(e.message) }, e.status), changed: false };
     console.error(e);
-    return { response: json({ error: "Something went wrong on the server. Try again." }, 500), changed: false };
+    return { response: json({ error: say("Something went wrong on the server. Try again.") }, 500), changed: false };
   }
 }
 
@@ -234,7 +287,7 @@ async function route(request, s, env) {
     // DELETE /api/trips/:id  -> driver cancels; passengers go back to looking
     if (parts.length === 2 && method === "DELETE") {
       if (!isDriver && !isAdmin) throw new HttpError(403, "Only the driver can cancel this ride.");
-      for (const p of trip.passengers) backToLooking(s, trip, p, `${trip.driver}'s ride was cancelled`);
+      for (const p of trip.passengers) backToLooking(s, trip, p, "cancelled");
       s.trips = s.trips.filter((t) => t !== trip);
       return ok();
     }
@@ -288,7 +341,7 @@ async function route(request, s, env) {
       if (!isPassenger && !isDriver && !isAdmin) throw new HttpError(403, "You can't change this seat.");
       trip.passengers = trip.passengers.filter((x) => x !== p);
       // Leaving yourself = gone. Removed by the driver = back on the looking list.
-      if (!isPassenger) backToLooking(s, trip, p, `Removed from ${trip.driver}'s car`);
+      if (!isPassenger) backToLooking(s, trip, p, "removed");
       return ok();
     }
   }

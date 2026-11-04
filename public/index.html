@@ -16,13 +16,14 @@
 <body>
   <div class="wrap">
     <header class="top">
+      <button type="button" class="link lang-btn" id="btn-lang">Latviski</button>
       <h1 id="event-name">Getting there</h1>
       <p id="tagline" class="tagline"></p>
       <p id="venue-note" class="venue-note"></p>
     </header>
 
     <div id="admin-banner" class="admin-banner" hidden>
-      <span>Organizer mode: you can edit or remove anything.</span>
+      <span id="admin-banner-text">Organizer mode: you can edit or remove anything.</span>
       <button type="button" class="link" id="btn-admin-exit">Exit</button>
     </div>
 
@@ -49,14 +50,14 @@
 
   <div id="gate" class="gate" hidden>
     <form class="gate-card" id="gate-form">
-      <h2>Getting there</h2>
-      <p>Enter the event code from the WhatsApp group.</p>
+      <h2 id="gate-title">Getting there</h2>
+      <p id="gate-lead">Enter the event code from the WhatsApp group.</p>
       <label class="field">
-        <span>Event code</span>
+        <span id="gate-label">Event code</span>
         <input id="gate-code" name="code" autocomplete="off" autocapitalize="off" required>
       </label>
       <p class="form-error" id="gate-error" hidden></p>
-      <button class="btn primary" type="submit">Continue</button>
+      <button class="btn primary" type="submit" id="gate-go">Continue</button>
     </form>
   </div>
 
@@ -78,6 +79,7 @@
   <div id="toast" class="toast" role="status" hidden></div>
 
   <script src="config.js"></script>
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
