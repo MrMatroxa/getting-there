@@ -191,10 +191,16 @@
   function legStats(legId) {
     const trips = data.trips.filter((x) => x.leg === legId);
     const offered = trips.reduce((n, x) => n + x.seats, 0);
-    const taken = trips.reduce((n, x) => n + x.passengers.length, 0);
-    const looking = data.requests.filter((r) => r.leg === legId).length;
+    const taken = trips.reduce((n, x) => n + used(x), 0);
+    const looking = people(data.requests.filter((r) => r.leg === legId));
     return { trips: trips.length, offered, taken, free: offered - taken, looking, short: Math.max(0, looking - (offered - taken)) };
   }
+  // A group travelling together takes as many seats as it has people.
+  const size = (x) => x.count || 1;
+  const used = (trip) => trip.passengers.reduce((n, p) => n + size(p), 0);
+  const people = (list) => list.reduce((n, x) => n + size(x), 0);
+  const groupTag = (x) => (size(x) > 1 ? `<span class="group-tag">${esc(t("people", size(x)))}</span>` : "");
+
   // Rides with no time yet go last.
   const byTime = (a, b) => (a.time ? 0 : 1) - (b.time ? 0 : 1) || a.time.localeCompare(b.time) || a.createdAt - b.createdAt;
 
@@ -229,13 +235,13 @@
       const leg = legById[trip.leg];
       const when = `${leg ? legName(leg) : trip.leg} ${timeText(trip)}`;
       if (isMine(trip.id)) {
-        const looking = data.requests.filter((r) => r.leg === trip.leg).length;
-        const free = trip.seats - trip.passengers.length;
-        const paxList = trip.passengers.length
+        const looking = people(data.requests.filter((r) => r.leg === trip.leg));
+        const free = trip.seats - used(trip);
+        const paxList = used(trip)
           ? `<ul class="mine-pax">${trip.passengers
               .map(
                 (p) =>
-                  `<li><span class="name">${esc(p.name)}</span>${contactHtml(p.contact)}${wantsHtml(p, leg)}${aroundHtml(p)}${isMine(p.id) ? "" : removeBtn(trip.id, p)}</li>`
+                  `<li><span class="name">${esc(p.name)}</span>${groupTag(p)}${contactHtml(p.contact)}${wantsHtml(p, leg)}${aroundHtml(p)}${isMine(p.id) ? "" : removeBtn(trip.id, p)}</li>`
               )
               .join("")}</ul>`
           : `<p class="mine-empty">${esc(t("nobodyYet"))}</p>`;
@@ -244,7 +250,7 @@
             ? `<button type="button" class="btn small" data-act="add-someone" data-trip="${esc(trip.id)}">${esc(t("addSomeone", looking))}</button>`
             : "";
         rows.push(
-          `<li class="mine-trip"><div class="mine-head"><span class="what">${esc(t("youDrive", trip.passengers.length, trip.seats))}</span><span class="when">${esc(when)}</span></div>${paxList}${add}</li>`
+          `<li class="mine-trip"><div class="mine-head"><span class="what">${esc(t("youDrive", used(trip), trip.seats))}</span><span class="when">${esc(when)}</span></div>${paxList}${add}</li>`
         );
       }
       for (const p of trip.passengers) {
@@ -318,7 +324,7 @@
       : `<div class="empty-leg"><span>${esc(t("noCars"))}</span><button type="button" class="btn small" data-act="drive" data-leg="${esc(leg.id)}">${esc(t("addYourCar"))}</button></div>`;
 
     const reqHtml = reqs.length
-      ? `<div class="looking"><h3>${esc(t("stillLooking", reqs.length))}</h3><ul class="req-list">${reqs.map((r) => renderRequest(r, leg)).join("")}</ul></div>`
+      ? `<div class="looking"><h3>${esc(t("stillLooking", people(reqs)))}</h3><ul class="req-list">${reqs.map((r) => renderRequest(r, leg)).join("")}</ul></div>`
       : "";
 
     return `<section class="leg" id="leg-${esc(leg.id)}">
@@ -333,10 +339,10 @@
 
   function renderTrip(trip) {
     const leg = legById[trip.leg];
-    const free = trip.seats - trip.passengers.length;
+    const free = trip.seats - used(trip);
     const driver = isMine(trip.id);
     const mySeat = trip.passengers.find((p) => isMine(p.id));
-    const dots = Array.from({ length: trip.seats }, (_, i) => `<span class="dot${i < trip.passengers.length ? " taken" : ""}"></span>`).join("");
+    const dots = Array.from({ length: trip.seats }, (_, i) => `<span class="dot${i < used(trip) ? " taken" : ""}"></span>`).join("");
     const canManage = driver || adminKey;
     const you = " " + t("you");
 
@@ -362,11 +368,11 @@
 
   // Buttons for a ride, shown on its card and in its pop-up.
   function tripButtons(trip) {
-    const free = trip.seats - trip.passengers.length;
+    const free = trip.seats - used(trip);
     const driver = isMine(trip.id);
     const mySeat = trip.passengers.find((p) => isMine(p.id));
     const canManage = driver || adminKey;
-    const lookingHere = data.requests.filter((r) => r.leg === trip.leg).length;
+    const lookingHere = people(data.requests.filter((r) => r.leg === trip.leg));
     const id = esc(trip.id);
     const out = [];
     if (mySeat) out.push(`<button type="button" class="link danger" data-act="leave" data-trip="${id}" data-pax="${esc(mySeat.id)}">${esc(t("giveUp"))}</button>`);
@@ -386,11 +392,11 @@
     const trip = data.trips.find((x) => x.id === tripId);
     if (!trip) return;
     const leg = legById[trip.leg];
-    const free = trip.seats - trip.passengers.length;
+    const free = trip.seats - used(trip);
     const canManage = isMine(trip.id) || adminKey;
     const you = " " + t("you");
     const initial = (name) => esc((String(name).trim()[0] || "?").toUpperCase());
-    const dots = Array.from({ length: trip.seats }, (_, i) => `<span class="dot${i < trip.passengers.length ? " taken" : ""}"></span>`).join("");
+    const dots = Array.from({ length: trip.seats }, (_, i) => `<span class="dot${i < used(trip) ? " taken" : ""}"></span>`).join("");
 
     const pax = trip.passengers
       .map((p) => {
@@ -399,7 +405,7 @@
         return `<li class="rd-person${mineP ? " me" : ""}">
             <span class="rd-avatar">${initial(p.name)}</span>
             <div class="rd-person-main">
-              <div class="rd-name-line"><span class="rd-name">${esc(p.name)}${mineP ? esc(you) : ""}</span>${canManage ? contactHtml(p.contact) : ""}</div>
+              <div class="rd-name-line"><span class="rd-name">${esc(p.name)}${mineP ? esc(you) : ""}</span>${groupTag(p)}${canManage ? contactHtml(p.contact) : ""}</div>
               ${extra ? `<div class="rd-extra">${extra}</div>` : ""}
             </div>
             ${canManage && !mineP ? removeBtn(trip.id, p) : ""}
@@ -441,7 +447,7 @@
         ${notes ? `<div class="rd-notes">${notes}</div>` : ""}
 
         <div class="rd-pax">
-          <span class="rd-label">${esc(t("passengers"))} · ${trip.passengers.length}/${trip.seats}</span>
+          <span class="rd-label">${esc(t("passengers"))} · ${used(trip)}/${trip.seats}</span>
           <ul class="rd-list">${pax}${empty}</ul>
         </div>
 
@@ -454,17 +460,18 @@
 
   function renderRequest(r, leg) {
     const own = isMine(r.id);
-    const myTripHere = data.trips.find((x) => x.leg === leg.id && isMine(x.id) && x.passengers.length < x.seats);
+    const myTripHere = data.trips.find((x) => x.leg === leg.id && isMine(x.id) && x.seats - used(x) >= size(r));
     const actions = [];
     if (myTripHere && !own) {
       actions.push(`<button type="button" class="btn small" data-act="pick" data-trip="${esc(myTripHere.id)}" data-req="${esc(r.id)}">${esc(t("addToMyCar"))}</button>`);
     }
     if (own || adminKey) {
+      actions.push(`<button type="button" class="link" data-act="edit-req" data-req="${esc(r.id)}">${esc(t("editEntry"))}</button>`);
       actions.push(`<button type="button" class="link danger" data-act="del-req" data-req="${esc(r.id)}">${esc(own ? t("imSorted") : t("remove"))}</button>`);
     }
     return `<li class="req${own ? " me" : ""}">
       <div class="req-main">
-        <div class="req-top"><span class="name" data-you="${esc(t("you"))}">${esc(r.name)}</span>${wantsHtml(r, leg)}${aroundHtml(r)}</div>
+        <div class="req-top"><span class="name" data-you="${esc(t("you"))}">${esc(r.name)}</span>${groupTag(r)}${wantsHtml(r, leg)}${aroundHtml(r)}</div>
         <div class="req-top">${contactHtml(r.contact)}</div>
         ${noteHtml(r)}
       </div>
@@ -558,6 +565,29 @@
       <label class="field"><span>${esc(t("waNumber"))}</span><input id="f-contact" name="contact" required maxlength="40" inputmode="tel" autocomplete="tel" value="${esc(contact)}" placeholder="+371 2…"></label>
     </div>`;
 
+  // A − n + stepper for "how many of you". Wired by wireSteppers().
+  const groupField = (value, max, hint = true) => `
+    <div class="field"><span>${esc(t("groupSize"))}</span>
+      <div class="stepper" data-stepper data-min="1" data-max="${max}">
+        <button type="button" data-step="-1" aria-label="${esc(t("fewer"))}">−</button><output>${value}</output><button type="button" data-step="1" aria-label="${esc(t("more"))}">+</button>
+        <input type="hidden" name="count" value="${value}">
+      </div>
+      ${hint ? `<small>${esc(t("groupHint"))}</small>` : ""}
+    </div>`;
+  function wireSteppers(root) {
+    $$("[data-stepper]", root).forEach((box) => {
+      const out = $("output", box);
+      const input = $("input", box);
+      $$("[data-step]", box).forEach((b) =>
+        b.addEventListener("click", () => {
+          const n = Math.min(Number(box.dataset.max), Math.max(Number(box.dataset.min), Number(input.value) + Number(b.dataset.step)));
+          input.value = n;
+          out.textContent = n;
+        })
+      );
+    });
+  }
+
   // ---------- flows ----------
   function driveForm(trip, presetLeg, prefill) {
     const editing = !!trip;
@@ -623,7 +653,7 @@
 
         const out = $("#f-seats-out", root);
         const input = $("#f-seats", root);
-        const min = trip ? Math.max(1, trip.passengers.length) : 1;
+        const min = trip ? Math.max(1, used(trip)) : 1;
         $$("[data-step]", root).forEach((b) =>
           b.addEventListener("click", () => {
             const n = Math.min(C.maxSeats || 7, Math.max(min, Number(input.value) + Number(b.dataset.step)));
@@ -695,6 +725,7 @@
       body: `
         <p class="dlg-lead">${t("needLead")}</p>
         <fieldset class="fieldset"><legend>${esc(t("whichTrips"))}</legend><div class="choices">${choices}</div><small>${esc(t("whichTripsHint"))}</small></fieldset>
+        ${groupField(1, C.maxSeats || 7)}
         <label class="field"><span id="f-area-label"></span>
           <select id="f-area" name="area"><option value="">${esc(t("anywhere"))}</option>${areaOpts}</select></label>
         <label class="field"><span>${esc(t("whereExactly"))} ${opt()}</span><input id="f-pickup" name="pickup" maxlength="100" autocomplete="off" placeholder="${esc(t("whereExample"))}"></label>
@@ -711,6 +742,7 @@
         };
         $$("input[name=legs]", root).forEach((i) => i.addEventListener("change", sync));
         sync();
+        wireSteppers(root);
       },
       async onSubmit(fd) {
         const chosen = fd.getAll("legs");
@@ -718,6 +750,7 @@
         const base = {
           name: String(fd.get("name")).trim(),
           contact: String(fd.get("contact")).trim(),
+          count: Number(fd.get("count") || 1),
           area: String(fd.get("area") || ""),
           pickup: String(fd.get("pickup") || "").trim(),
           time: String(fd.get("time") || ""),
@@ -740,6 +773,8 @@
     const back = isBack(leg);
     const myReq = data.requests.find((r) => r.leg === trip.leg && isMine(r.id));
     const already = data.trips.find((x) => x.leg === trip.leg && x.passengers.some((p) => isMine(p.id)));
+    const free = trip.seats - used(trip);
+    const tooBig = myReq && size(myReq) > free;
     openDialog({
       title: t("takeTitle"),
       submit: t("takeSubmit"),
@@ -748,8 +783,11 @@
         ${already ? `<p class="form-error" style="margin:0">${esc(t("alreadySeated", already.driver))}</p>` : ""}
         ${
           myReq
-            ? `<p class="dlg-lead">${esc(t("comesOffList"))}</p>`
-            : personFields(me.name, me.contact) +
+            ? tooBig
+              ? `<p class="form-error" style="margin:0">${esc(t("groupTooBig", size(myReq), free))}</p>`
+              : `<p class="dlg-lead">${esc(t("comesOffList"))}</p>`
+            : (free > 1 ? groupField(1, free, false) : "") +
+              personFields(me.name, me.contact) +
               `<label class="field"><span>${esc(back ? t("whereDrop") : t("wherePick"))} ${opt()}</span><input name="pickup" maxlength="100" autocomplete="off" placeholder="${esc(t("seatExample"))}"></label>`
         }
         <p class="dlg-lead">${esc(back ? t("messageBack", trip.driver) : t("messageTo", trip.driver))}</p>`,
@@ -757,7 +795,12 @@
         if (myReq) {
           await api(`trips/${trip.id}/seats`, { method: "POST", body: { requestId: myReq.id }, token: mine[myReq.id] });
         } else {
-          const body = { name: String(fd.get("name")).trim(), contact: String(fd.get("contact")).trim(), pickup: String(fd.get("pickup") || "").trim() };
+          const body = {
+            name: String(fd.get("name")).trim(),
+            contact: String(fd.get("contact")).trim(),
+            pickup: String(fd.get("pickup") || "").trim(),
+            count: Number(fd.get("count") || 1),
+          };
           rememberMe(body.name, body.contact);
           const res = await api(`trips/${trip.id}/seats`, { method: "POST", body });
           remember(res.id, res.token);
@@ -765,6 +808,7 @@
         toast(t("inCar", trip.driver));
         return askAboutOtherDays(leg);
       },
+      onOpen: wireSteppers,
     });
   }
 
@@ -788,12 +832,46 @@
     return true;
   }
 
+  function editRequest(reqId) {
+    const r = data.requests.find((x) => x.id === reqId);
+    if (!r) return;
+    const leg = legById[r.leg];
+    const areaOpts = AREAS.map((a) => `<option ${a === r.area ? "selected" : ""}>${esc(a)}</option>`).join("");
+    openDialog({
+      title: t("editEntryTitle"),
+      submit: t("saveChanges"),
+      body: `
+        <p class="dlg-lead">${esc(leg ? legName(leg) : "")}</p>
+        ${groupField(size(r), C.maxSeats || 7)}
+        <label class="field"><span>${esc(isBack(leg) ? t("areaBack") : t("areaTo"))}</span>
+          <select name="area"><option value="">${esc(t("anywhere"))}</option>${areaOpts}${r.area && !AREAS.includes(r.area) ? `<option selected>${esc(r.area)}</option>` : ""}</select></label>
+        <label class="field"><span>${esc(t("whereExactly"))} ${opt()}</span><input name="pickup" maxlength="100" autocomplete="off" value="${esc(r.pickup)}" placeholder="${esc(t("whereExample"))}"></label>
+        <label class="field"><span>${esc(t("roughTime"))} ${opt()}</span><input type="time" name="time" value="${esc(r.time)}"></label>
+        ${personFields(r.name, r.contact)}
+        <label class="field"><span>${esc(t("note"))} ${opt()}</span><textarea name="note" maxlength="200">${esc(r.note)}</textarea></label>`,
+      onOpen: wireSteppers,
+      async onSubmit(fd) {
+        const body = {
+          count: Number(fd.get("count") || 1),
+          area: String(fd.get("area") || ""),
+          pickup: String(fd.get("pickup") || "").trim(),
+          time: String(fd.get("time") || ""),
+          name: String(fd.get("name")).trim(),
+          contact: String(fd.get("contact")).trim(),
+          note: String(fd.get("note") || ""),
+        };
+        await api(`requests/${r.id}`, { method: "PATCH", body, token: mine[r.id] });
+        toast(t("entryUpdated"));
+      },
+    });
+  }
+
   // Driver: pick people from the Still looking list for this trip's day.
   function addPicker(tripId) {
     const trip = data.trips.find((x) => x.id === tripId);
     if (!trip) return closeDialog();
     const leg = legById[trip.leg];
-    const free = trip.seats - trip.passengers.length;
+    const free = trip.seats - used(trip);
     const reqs = data.requests.filter((r) => r.leg === trip.leg).sort((a, b) => a.createdAt - b.createdAt);
     if (!reqs.length || free <= 0) {
       closeDialog();
@@ -801,8 +879,12 @@
     }
     const rows = reqs
       .map(
-        (r) => `<li class="pick-row"><div class="pax-main"><span class="name">${esc(r.name)}</span>${contactHtml(r.contact)}${wantsHtml(r, leg)}${aroundHtml(r)}${noteHtml(r, "span")}</div>
-          <button type="button" class="btn small primary" data-pick="${esc(r.id)}">${esc(t("add"))}</button></li>`
+        (r) => `<li class="pick-row"><div class="pax-main"><span class="name">${esc(r.name)}</span>${groupTag(r)}${contactHtml(r.contact)}${wantsHtml(r, leg)}${aroundHtml(r)}${noteHtml(r, "span")}</div>
+          ${
+            size(r) > free
+              ? `<span class="too-big">${esc(t("tooBig", free))}</span>`
+              : `<button type="button" class="btn small primary" data-pick="${esc(r.id)}">${esc(t("add"))}</button>`
+          }</li>`
       )
       .join("");
     openDialog({
@@ -835,12 +917,12 @@
       lines.push(`*${legDay(leg)}, ${legDir(leg)}*`);
       if (!trips.length) lines.push(t("sumNoCars"));
       for (const trip of trips) {
-        const free = trip.seats - trip.passengers.length;
+        const free = trip.seats - used(trip);
         const where = isBack(leg) ? t("sumDrop", trip.pickup) : t("sumFrom", trip.pickup);
         const when = trip.time ? timeText(trip) : t("sumTimeTbd");
-        lines.push(`• ${when} ${trip.driver}, ${where}: ${free > 0 ? t("sumFree", free) : t("sumFull")} (${trip.passengers.length}/${trip.seats})`);
+        lines.push(`• ${when} ${trip.driver}, ${where}: ${free > 0 ? t("sumFree", free) : t("sumFull")} (${used(trip)}/${trip.seats})`);
       }
-      if (reqs.length) lines.push(t("sumLooking", reqs.map((r) => r.name).join(", ")));
+      if (reqs.length) lines.push(t("sumLooking", reqs.map((r) => (size(r) > 1 ? `${r.name} (${size(r)})` : r.name)).join(", ")));
       lines.push("");
     }
     lines.push(t("sumLink", location.origin));
@@ -933,7 +1015,7 @@
     if (act === "edit-trip" && trip) return driveForm(trip);
 
     if (act === "cancel-trip" && trip) {
-      const n = trip.passengers.length;
+      const n = used(trip);
       return confirmBox(t("cancelQ"), esc(n ? t("cancelPax", n) : t("cancelEmpty")), t("cancelRide"), async () => {
         await api(`trips/${trip.id}`, { method: "DELETE", token: mine[trip.id] });
         toast(t("rideCancelled"));
@@ -959,6 +1041,7 @@
         toast(t("addedToCar"));
       });
     }
+    if (act === "edit-req") return editRequest(reqId);
     if (act === "del-req") {
       const own = isMine(reqId);
       return confirmBox(own ? t("delSelfQ") : t("delOtherQ"), esc(own ? t("delSelfText") : t("delOtherText")), t("remove"), async () => {

@@ -52,6 +52,7 @@ const LV_FIXED = {
   "You can't change this seat.": "Tu nevari mainīt šo vietu.",
   "That entry is already gone.": "Šis ieraksts jau ir dzēsts.",
   "Only the person who posted this can remove it.": "To var dzēst tikai tas, kurš to pievienoja.",
+  "Only the person who posted this can change it.": "To var mainīt tikai tas, kurš to pievienoja.",
   "The request couldn't be read.": "Pieprasījumu neizdevās nolasīt.",
   "Something went wrong on the server. Try again.": "Serverī kaut kas nogāja greizi. Mēģini vēlreiz.",
   "Not found.": "Nav atrasts.",
@@ -64,6 +65,9 @@ export function toLatvian(msg) {
   if ((m = msg.match(/^(.+) is required\.$/))) return `${label(m[1])}: obligāti jāaizpilda.`;
   if ((m = msg.match(/^(.+) is too long \(max (\d+) characters\)\.$/))) return `${label(m[1])}: pārāk garš teksts (maks. ${m[2]} rakstzīmes).`;
   if ((m = msg.match(/^Free seats should be between 1 and (\d+)\.$/))) return `Brīvo vietu skaitam jābūt no 1 līdz ${m[1]}.`;
+  if ((m = msg.match(/^Group size should be between 1 and (\d+)\.$/))) return `Cilvēku skaitam jābūt no 1 līdz ${m[1]}.`;
+  if ((m = msg.match(/^This car only has (\d+) free seats? left, not enough for (\d+)\.$/)))
+    return `Šajā auto atlikušas brīvas vietas: ${m[1]}. Nepietiek ${m[2]} cilvēkiem.`;
   if ((m = msg.match(/^(\d+) people already have a seat\./)))
     return `Vietas jau ir aizņēmuši ${m[1]} cilvēki. Vispirms kādu noņem, tad samazini vietu skaitu.`;
   return msg;
@@ -123,6 +127,17 @@ function luggage(value) {
   return v;
 }
 
+// How many people an entry stands for (a group travelling together). Default 1.
+function groupSize(value) {
+  if (value == null || value === "") return 1;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_SEATS) throw new HttpError(400, `Group size should be between 1 and ${MAX_SEATS}.`);
+  return n;
+}
+const sizeOf = (x) => x.count || 1;
+// Seats a ride has given away: a group of 2 takes 2.
+export const usedSeats = (trip) => trip.passengers.reduce((n, p) => n + sizeOf(p), 0);
+
 function person(body) {
   return {
     name: text(body.name, "Name", 40, { required: true }),
@@ -169,6 +184,7 @@ function backToLooking(s, trip, p, why) {
     leg: trip.leg,
     name: p.name,
     contact: p.contact,
+    count: sizeOf(p),
     area: p.area || "",
     pickup: p.pickup || trip.pickup,
     time: p.time || "",
@@ -269,8 +285,8 @@ async function route(request, s, env) {
       if ("contact" in body) trip.contact = text(body.contact, "WhatsApp number", 40, { required: true });
       if ("seats" in body) {
         const n = seats(body.seats);
-        if (n < trip.passengers.length) {
-          throw new HttpError(409, `${trip.passengers.length} people already have a seat. Remove someone first, then lower the seats.`);
+        if (n < usedSeats(trip)) {
+          throw new HttpError(409, `${usedSeats(trip)} people already have a seat. Remove someone first, then lower the seats.`);
         }
         trip.seats = n;
       }
@@ -297,19 +313,25 @@ async function route(request, s, env) {
     // body {requestId} + x-token of request   the rider moves their "looking" entry into the car
     // body {requestId} + x-token of the trip  the driver picks someone from the "looking" list
     if (parts[2] === "seats" && parts.length === 3 && method === "POST") {
-      if (trip.passengers.length >= trip.seats) throw new HttpError(409, "This car is already full.");
+      const free = trip.seats - usedSeats(trip);
+      if (free <= 0) throw new HttpError(409, "This car is already full.");
+      const fits = (n) => {
+        if (n > free) throw new HttpError(409, `This car only has ${free} free ${free === 1 ? "seat" : "seats"} left, not enough for ${n}.`);
+      };
       if (body.requestId) {
         const req = s.requests.find((r) => r.id === body.requestId);
         if (!req) throw new HttpError(404, "That person isn't on the looking list any more.");
         const byRider = token && token === req.token;
         if (!byRider && !isDriver && !isAdmin) throw new HttpError(403, "You can't move this person.");
         if (req.leg !== trip.leg) throw new HttpError(409, "That person is looking for a ride on a different day.");
+        fits(sizeOf(req));
         s.requests = s.requests.filter((r) => r !== req);
         trip.passengers.push({
           id: req.id,
           token: req.token,
           name: req.name,
           contact: req.contact,
+          count: sizeOf(req),
           area: req.area || "",
           pickup: req.pickup || "",
           time: req.time || "",
@@ -319,10 +341,13 @@ async function route(request, s, env) {
         return ok({ id: req.id });
       }
       if (itemCount(s) >= MAX_ITEMS) throw new HttpError(429, "The board is full. Ask the organizer to tidy up.");
+      const count = groupSize(body.count);
+      fits(count);
       const p = {
         id: newId(),
         token: newToken(),
         ...person(body),
+        count,
         area: "",
         pickup: text(body.pickup, "Pickup spot", PLACE_MAX),
         time: "",
@@ -355,6 +380,7 @@ async function route(request, s, env) {
         token: newToken(),
         leg: legId(body.leg),
         ...person(body),
+        count: groupSize(body.count),
         area: text(body.area, "Area", 40),
         pickup: text(body.pickup, "Address", PLACE_MAX),
         time: timeOptional(body.time),
@@ -363,6 +389,21 @@ async function route(request, s, env) {
       };
       s.requests.push(r);
       return ok({ id: r.id, token: r.token });
+    }
+
+    // PATCH /api/requests/:id  -> the person who posted it (or the organizer) changes it
+    if (parts.length === 2 && method === "PATCH") {
+      const r = s.requests.find((x) => x.id === parts[1]);
+      if (!r) throw new HttpError(404, "That entry is already gone.");
+      if (!(token && token === r.token) && !isAdmin) throw new HttpError(403, "Only the person who posted this can change it.");
+      if ("name" in body) r.name = text(body.name, "Name", 40, { required: true });
+      if ("contact" in body) r.contact = text(body.contact, "WhatsApp number", 40, { required: true });
+      if ("count" in body) r.count = groupSize(body.count);
+      if ("area" in body) r.area = text(body.area, "Area", 40);
+      if ("pickup" in body) r.pickup = text(body.pickup, "Address", PLACE_MAX);
+      if ("time" in body) r.time = timeOptional(body.time);
+      if ("note" in body) r.note = multiline(body.note, "Note", 200);
+      return ok();
     }
 
     // DELETE /api/requests/:id

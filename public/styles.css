@@ -439,3 +439,10 @@ a { color: var(--accent); }
 
 /* Day headings ("Piektdiena 20. nov.") as large as the ride times */
 .leg-head h3 { font-size: 1.25rem; }
+
+/* Groups travelling together */
+.group-tag {
+  display: inline-block; background: var(--lamp-soft); color: var(--lamp);
+  border-radius: 999px; padding: 1px 8px; font-size: .78rem; font-weight: 700; white-space: nowrap;
+}
+.too-big { font-size: .82rem; color: var(--muted); white-space: nowrap; }

@@ -114,4 +114,37 @@ assert.deepEqual([relisted.area, relisted.pickup, relisted.time], ["Pļavnieki",
 await call("DELETE", `requests/${andris.id}`, { admin: "boss" });
 await call("DELETE", `trips/${back.id}`, { token: back.token });
 
+// groups: a request for 2 takes 2 seats, and won't fit where only 1 is free
+r = await call("POST", "trips", { body: { leg: "sat-to", time: "10:00", seats: 3, pickup: "Origo", driver: "G", contact: "29000010" } });
+const gTrip = r.body;
+r = await call("POST", "requests", { body: { leg: "sat-to", name: "Florence", contact: "+41770000000", count: 2 } });
+const flo = r.body;
+assert.equal(r.body.state.requests.find((x) => x.id === flo.id).count, 2);
+r = await call("POST", `trips/${gTrip.id}/seats`, { body: { name: "Solo", contact: "29000011" } });
+const solo = r.body;
+r = await call("POST", `trips/${gTrip.id}/seats`, { body: { name: "Duo", contact: "29000012", count: 3 } });
+assert.equal(r.status, 409, "a group of 3 doesn't fit in 2 free seats");
+r = await call("POST", `trips/${gTrip.id}/seats`, { body: { requestId: flo.id }, token: gTrip.token });
+assert.equal(r.status, 200, "group of 2 fits the last 2 seats");
+r = await call("POST", `trips/${gTrip.id}/seats`, { body: { name: "Late", contact: "29000013" } });
+assert.equal(r.status, 409, "car is full: 1 + 2 = 3");
+r = await call("PATCH", `trips/${gTrip.id}`, { body: { seats: 2 }, token: gTrip.token });
+assert.equal(r.status, 409, "can't drop below 3 used seats");
+// removed group goes back on the list as a group
+r = await call("DELETE", `trips/${gTrip.id}/seats/${flo.id}`, { token: gTrip.token });
+assert.equal(r.body.state.requests.find((x) => x.id === flo.id).count, 2);
+
+// the organizer (or the owner) can change an entry's group size; strangers can't
+r = await call("PATCH", `requests/${flo.id}`, { body: { count: 3 }, token: "nope" });
+assert.equal(r.status, 403);
+r = await call("PATCH", `requests/${flo.id}`, { body: { count: 3 }, admin: "boss" });
+assert.equal(r.body.state.requests.find((x) => x.id === flo.id).count, 3);
+r = await call("PATCH", `requests/${flo.id}`, { body: { count: 0 }, token: flo.token });
+assert.equal(r.status, 400);
+r = await call("PATCH", `requests/${flo.id}`, { body: { count: 1, note: "Jasmine found another ride" }, token: flo.token });
+assert.equal(r.body.state.requests.find((x) => x.id === flo.id).note, "Jasmine found another ride");
+await call("DELETE", `requests/${flo.id}`, { admin: "boss" });
+await call("DELETE", `trips/${gTrip.id}/seats/${solo.id}`, { token: solo.token });
+await call("DELETE", `trips/${gTrip.id}`, { token: gTrip.token });
+
 console.log("All carpool tests passed.");
