@@ -449,3 +449,9 @@ a { color: var(--accent); }
 
 /* Language switch on the event-code screen */
 .gate-lang { position: absolute; top: max(16px, env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* "Can meet anywhere" on looking entries */
+.from.anywhere {
+  display: inline-block; background: var(--ok-soft); color: var(--ok);
+  border-radius: 999px; padding: 1px 9px; font-size: .8rem; font-weight: 600;
+}

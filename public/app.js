@@ -88,7 +88,8 @@
     const bits = [];
     if (r.area) bits.push(esc(r.area));
     if (r.pickup) bits.push(placeLink(r.pickup));
-    if (!bits.length) return "";
+    // No area or address = they picked "Anywhere is fine": tell drivers they'll come to them.
+    if (!bits.length) return `<span class="from anywhere">${esc(isBack(leg) ? t("dropAnywhere") : t("meetAnywhere"))}</span>`;
     return `<span class="from">${isBack(leg) ? t("dropOff") : t("from")} ${bits.join(" · ")}</span>`;
   }
   const aroundHtml = (r) => (r.time ? `<span class="from">${esc(t("around", r.time))}</span>` : "");
