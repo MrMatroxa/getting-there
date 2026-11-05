@@ -147,4 +147,24 @@ await call("DELETE", `requests/${flo.id}`, { admin: "boss" });
 await call("DELETE", `trips/${gTrip.id}/seats/${solo.id}`, { token: solo.token });
 await call("DELETE", `trips/${gTrip.id}`, { token: gTrip.token });
 
+// posting a ride can take people from the looking list in the same step
+r = await call("POST", "requests", { body: { leg: "fri-to", name: "Flo", contact: "+41770000001", count: 2 } });
+const flo2 = r.body;
+r = await call("POST", "requests", { body: { leg: "fri-to", name: "Tom", contact: "+37256700001" } });
+const tom = r.body;
+r = await call("POST", "requests", { body: { leg: "sun-from", name: "SunOnly", contact: "29000020" } });
+const sunOnly = r.body;
+r = await call("POST", "trips", {
+  body: { leg: "fri-to", time: "18:00", seats: 2, pickup: "Origo", driver: "Ri", contact: "29000021", take: [flo2.id, tom.id, sunOnly.id, "gone"] },
+});
+assert.equal(r.status, 200);
+let posted = r.body.state.trips.find((x) => x.id === r.body.id);
+assert.deepEqual(posted.passengers.map((p) => [p.name, p.count]), [["Flo", 2]], "Flo's group of 2 fills both seats");
+assert.deepEqual(r.body.skipped, [tom.id, sunOnly.id, "gone"], "no room for Tom, wrong day, and missing ids are skipped");
+assert.ok(!r.body.state.requests.some((x) => x.id === flo2.id), "Flo is off the looking list");
+assert.ok(r.body.state.requests.some((x) => x.id === tom.id), "Tom is still looking");
+const riTrip = r.body;
+await call("DELETE", `trips/${riTrip.id}`, { token: riTrip.token });
+for (const id of [flo2.id, tom.id, sunOnly.id]) await call("DELETE", `requests/${id}`, { admin: "boss" });
+
 console.log("All carpool tests passed.");

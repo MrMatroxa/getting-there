@@ -455,3 +455,30 @@ a { color: var(--accent); }
   display: inline-block; background: var(--ok-soft); color: var(--ok);
   border-radius: 999px; padding: 1px 9px; font-size: .8rem; font-weight: 600;
 }
+
+/* Ride form: tick people from the looking list */
+.take-list { display: grid; gap: 6px; }
+.take-row {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center;
+  border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; background: var(--bg); cursor: pointer;
+}
+.take-row input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+.take-row.on { border-color: var(--accent); background: var(--accent-soft); }
+.take-row.off { opacity: .55; cursor: default; }
+.take-main { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; min-width: 0; }
+.take-main .name { font-weight: 600; }
+.take-main .from { color: var(--muted); font-size: .85rem; }
+
+/* Full cars: compact rows at the bottom of each day */
+.full-cars { display: grid; gap: 6px; margin-top: 4px; }
+.full-cars h4 { margin: 0; font: 700 .72rem/1.2 var(--font-body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.full-row {
+  display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: center;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px;
+  cursor: pointer; color: var(--muted); font-size: .9rem;
+}
+.full-row:hover { border-color: var(--muted); }
+.fr-time { font: 700 .95rem/1 var(--font-mono); color: var(--ink); }
+.fr-place { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 600; }
+.fr-driver { white-space: nowrap; }
+.full-row .pill { padding: 2px 8px; font-size: .75rem; }

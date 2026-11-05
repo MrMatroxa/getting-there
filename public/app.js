@@ -92,6 +92,11 @@
     if (!bits.length) return `<span class="from anywhere">${esc(isBack(leg) ? t("dropAnywhere") : t("meetAnywhere"))}</span>`;
     return `<span class="from">${isBack(leg) ? t("dropOff") : t("from")} ${bits.join(" · ")}</span>`;
   }
+  function wantsPlain(r, leg) {
+    const bits = [r.area, r.pickup].filter(Boolean).map(esc);
+    if (!bits.length) return `<span class="from anywhere">${esc(isBack(leg) ? t("dropAnywhere") : t("meetAnywhere"))}</span>`;
+    return `<span class="from">${isBack(leg) ? t("dropOff") : t("from")} ${bits.join(" · ")}</span>`;
+  }
   const aroundHtml = (r) => (r.time ? `<span class="from">${esc(t("around", r.time))}</span>` : "");
 
   // Why someone is back on the list (their ride was cancelled, or the driver removed them).
@@ -201,6 +206,23 @@
   const used = (trip) => trip.passengers.reduce((n, p) => n + size(p), 0);
   const people = (list) => list.reduce((n, x) => n + size(x), 0);
   const groupTag = (x) => (size(x) > 1 ? `<span class="group-tag">${esc(t("people", size(x)))}</span>` : "");
+
+  // Order of people looking for a trip. Without a departure time: whoever posted first.
+  // With one: people fine with any time or within an hour of it first, then an hour
+  // further out, and so on; inside each group, whoever posted first.
+  const minutes = (hm) => {
+    const m = /^(\d{2}):(\d{2})$/.exec(hm || "");
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  function byMatch(departure) {
+    const dep = minutes(departure);
+    const band = (r) => {
+      const want = minutes(r.time);
+      if (dep == null || want == null) return 0;
+      return Math.floor(Math.max(0, Math.abs(want - dep) - 1) / 60);
+    };
+    return (a, b) => band(a) - band(b) || a.createdAt - b.createdAt;
+  }
 
   // Rides with no time yet go last.
   const byTime = (a, b) => (a.time ? 0 : 1) - (b.time ? 0 : 1) || a.time.localeCompare(b.time) || a.createdAt - b.createdAt;
@@ -320,8 +342,16 @@
     else if (s.short) pill = `<span class="pill short">${esc(t("pillShort", s.short))}</span>`;
     else pill = `<span class="pill ok">${esc(t("pillOk", s.free, s.looking))}</span>`;
 
+    // Full cars move to the bottom as one-line rows, unless it's your own car or you
+    // have a seat in it. Tapping a row still opens the pop-up with who's in.
+    const isFullOther = (x) => x.seats - used(x) <= 0 && !isMine(x.id) && !x.passengers.some((p) => isMine(p.id));
+    const open = trips.filter((x) => !isFullOther(x));
+    const full = trips.filter(isFullOther);
+    const fullHtml = full.length
+      ? `<div class="full-cars"><h4>${esc(t("fullCars", full.length))}</h4>${full.map(renderFullRow).join("")}</div>`
+      : "";
     const tripsHtml = trips.length
-      ? `<div class="trips">${trips.map(renderTrip).join("")}</div>`
+      ? `<div class="trips">${open.map(renderTrip).join("")}${fullHtml}</div>`
       : `<div class="empty-leg"><span>${esc(t("noCars"))}</span><button type="button" class="btn small" data-act="drive" data-leg="${esc(leg.id)}">${esc(t("addYourCar"))}</button></div>`;
 
     const reqHtml = reqs.length
@@ -364,6 +394,16 @@
         ${trip.note ? `<p class="note">${esc(trip.note)}</p>` : ""}
         <div class="trip-actions">${actions.join("")}</div>
       </div>
+    </article>`;
+  }
+
+  // One line for a full car that isn't yours: time · place · driver · Full.
+  function renderFullRow(trip) {
+    return `<article class="full-row" data-card="${esc(trip.id)}">
+      <span class="fr-time">${esc(timeText(trip))}</span>
+      <span class="fr-place">${esc(trip.pickup)}</span>
+      <span class="fr-driver">${esc(trip.driver)}</span>
+      <span class="pill">${esc(t("full"))}</span>
     </article>`;
   }
 
@@ -489,6 +529,7 @@
     $("#dlg-title").textContent = title;
     $("#dlg-body").innerHTML = body;
     $("#dlg-body").onclick = null;
+    $("#dlg-body").onchange = null;
     $("#dlg-error").hidden = true;
     const btn = $("#dlg-submit");
     btn.textContent = submit;
@@ -609,6 +650,8 @@
           `<label class="choice"><input type="radio" name="leg" value="${esc(l.id)}" ${l.id === v.leg ? "checked" : ""} required><span>${esc(legName(l))}</span></label>`
       )
       .join("");
+    // New rides only: people from the looking list the driver ticks to take along.
+    const picked = new Set();
 
     openDialog({
       title: editing ? t("editTitle") : t("offerTitle"),
@@ -626,7 +669,12 @@
         <label class="check" id="f-flex-wrap"><input type="checkbox" id="f-flex" name="flexible" ${v.flexible ? "checked" : ""}><span>${esc(t("notSure"))}</span></label>
         <label class="field"><span id="f-place-label"></span><input id="f-pickup" name="pickup" required maxlength="100" value="${esc(v.pickup)}" placeholder="${esc(t("addressExample"))}" autocomplete="off"><small id="f-place-hint"></small></label>
         ${personFields(v.driver, v.contact)}
-        <label class="field"><span>${esc(t("note"))} ${opt()}</span><textarea id="f-note" name="note" maxlength="280" placeholder="">${esc(v.note)}</textarea></label>`,
+        <label class="field"><span>${esc(t("note"))} ${opt()}</span><textarea id="f-note" name="note" maxlength="280" placeholder="">${esc(v.note)}</textarea></label>
+        ${
+          editing
+            ? ""
+            : `<fieldset class="fieldset take-wrap" id="f-take-wrap" hidden><legend id="f-take-legend"></legend><div class="take-list" id="f-take"></div><small>${esc(t("takeHint"))}</small></fieldset>`
+        }`,
       onOpen(root) {
         const flex = $("#f-flex", root);
         const timeIn = $("#f-time", root);
@@ -654,14 +702,61 @@
 
         const out = $("#f-seats-out", root);
         const input = $("#f-seats", root);
-        const min = trip ? Math.max(1, used(trip)) : 1;
+        const minBase = trip ? Math.max(1, used(trip)) : 1;
+
+        // People looking for the chosen trip, as tick boxes. Ticking is limited by the
+        // seats: a group that no longer fits is greyed out.
+        const pickedSize = () => people(data.requests.filter((r) => picked.has(r.id)));
+        const renderTake = () => {
+          const wrap = $("#f-take-wrap", root);
+          if (!wrap) return;
+          const chosen = $("input[name=leg]:checked", root);
+          const leg = chosen && legById[chosen.value];
+          const reqs = leg ? data.requests.filter((r) => r.leg === leg.id && !isMine(r.id)).sort(byMatch(timeIn.value)) : [];
+          wrap.hidden = !reqs.length;
+          if (!reqs.length) return;
+          const room = Number(input.value) - pickedSize();
+          $("#f-take-legend", root).textContent = t("takeLegend", people(reqs));
+          $("#f-take", root).innerHTML = reqs
+            .map((r) => {
+              const on = picked.has(r.id);
+              const off = !on && size(r) > room;
+              return `<label class="take-row${on ? " on" : ""}${off ? " off" : ""}">
+                <input type="checkbox" data-take="${esc(r.id)}" ${on ? "checked" : ""} ${off ? "disabled" : ""}>
+                <span class="take-main"><span class="name">${esc(r.name)}</span>${groupTag(r)}${wantsPlain(r, leg)}${aroundHtml(r)}</span>
+                ${off ? `<span class="too-big">${esc(room > 0 ? t("tooBig", room) : t("noRoom"))}</span>` : ""}
+              </label>`;
+            })
+            .join("");
+        };
+        // A property, not addEventListener: the dialog body is reused, and openDialog clears it.
+        root.onchange = (e) => {
+          const box = e.target.closest("[data-take]");
+          if (!box) return;
+          if (box.checked) picked.add(box.dataset.take);
+          else picked.delete(box.dataset.take);
+          renderTake();
+        };
+        $$("input[name=leg]", root).forEach((r) =>
+          r.addEventListener("change", () => {
+            picked.clear();
+            renderTake();
+          })
+        );
+        timeIn.addEventListener("change", renderTake);
+        timeIn.addEventListener("input", renderTake);
+
         $$("[data-step]", root).forEach((b) =>
           b.addEventListener("click", () => {
+            // Can't go below the people already ticked (or already in the car).
+            const min = Math.max(minBase, pickedSize());
             const n = Math.min(C.maxSeats || 7, Math.max(min, Number(input.value) + Number(b.dataset.step)));
             input.value = n;
             out.textContent = n;
+            renderTake();
           })
         );
+        renderTake();
       },
       async onSubmit(fd) {
         const body = {
@@ -680,8 +775,24 @@
           toast(t("rideUpdated"));
           return;
         }
-        const res = await api("trips", { method: "POST", body });
+        // Names now, before the list changes, for the message afterwards.
+        const label = (id) => {
+          const r = data.requests.find((x) => x.id === id);
+          return r ? (size(r) > 1 ? `${r.name} (${size(r)})` : r.name) : "?";
+        };
+        const take = [...picked];
+        const takeNames = Object.fromEntries(take.map((id) => [id, label(id)]));
+        const res = await api("trips", { method: "POST", body: { ...body, take } });
         remember(res.id, res.token);
+        const skipped = res.skipped || [];
+        const added = take.filter((id) => !skipped.includes(id));
+        const news = [
+          added.length ? t("addedToRide", added.map((id) => takeNames[id]).join(", ")) : "",
+          skipped.length ? t("skippedRide", skipped.map((id) => takeNames[id] || "?").join(", ")) : "",
+        ]
+          .filter(Boolean)
+          .map((line) => `<p class="dlg-lead">${esc(line)}</p>`)
+          .join("");
         const leg = legById[body.leg];
         // Suggest the last return trip (Sunday) first: that's when most people head home.
         const back =
@@ -694,7 +805,7 @@
         if (back) {
           openDialog({
             title: t("rideUpTitle"),
-            body: `<p class="dlg-lead">${esc(t("rideUpLead"))}</p>`,
+            body: `${news}<p class="dlg-lead">${esc(t("rideUpLead"))}</p>`,
             submit: t("addTripBack"),
             cancel: t("notNow"),
             onSubmit: async () => {
@@ -702,6 +813,10 @@
               return true;
             },
           });
+          return true;
+        }
+        if (news) {
+          openDialog({ title: t("ridePosted"), body: news, cancel: t("close") });
           return true;
         }
         toast(t("ridePosted"));
@@ -873,7 +988,7 @@
     if (!trip) return closeDialog();
     const leg = legById[trip.leg];
     const free = trip.seats - used(trip);
-    const reqs = data.requests.filter((r) => r.leg === trip.leg).sort((a, b) => a.createdAt - b.createdAt);
+    const reqs = data.requests.filter((r) => r.leg === trip.leg).sort(byMatch(trip.time));
     if (!reqs.length || free <= 0) {
       closeDialog();
       return;

@@ -194,6 +194,24 @@ function backToLooking(s, trip, p, why) {
   });
 }
 
+// Moves a looking entry into a car, keeping its id and token so the rider's phone
+// still recognises it as theirs.
+function moveIntoCar(s, trip, req) {
+  s.requests = s.requests.filter((r) => r !== req);
+  trip.passengers.push({
+    id: req.id,
+    token: req.token,
+    name: req.name,
+    contact: req.contact,
+    count: sizeOf(req),
+    area: req.area || "",
+    pickup: req.pickup || "",
+    time: req.time || "",
+    note: req.note || "",
+    addedAt: Date.now(),
+  });
+}
+
 /**
  * @param {Request} request
  * @param {{trips: any[], requests: any[]}} state  mutable copy of stored state
@@ -241,7 +259,7 @@ async function route(request, s, env) {
   }
 
   if (parts[0] === "trips") {
-    // POST /api/trips  -> offer a ride
+    // POST /api/trips  -> offer a ride (optionally with people from the looking list)
     if (parts.length === 1 && method === "POST") {
       if (itemCount(s) >= MAX_ITEMS) throw new HttpError(429, "The board is full. Ask the organizer to tidy up.");
       const p = person({ name: body.driver, contact: body.contact });
@@ -263,7 +281,21 @@ async function route(request, s, env) {
         createdAt: Date.now(),
       };
       s.trips.push(trip);
-      return ok({ id: trip.id, token: trip.token });
+
+      // body.take: ids from the looking list the driver ticked. Done in the same step
+      // as posting, so two drivers can't grab the same person. Anyone who is gone
+      // by now, is on another day, or doesn't fit any more is skipped and reported.
+      const skipped = [];
+      const take = Array.isArray(body.take) ? body.take.slice(0, 20) : [];
+      for (const id of take) {
+        const req = s.requests.find((r) => r.id === id);
+        if (!req || req.leg !== trip.leg || sizeOf(req) > trip.seats - usedSeats(trip)) {
+          skipped.push(String(id));
+          continue;
+        }
+        moveIntoCar(s, trip, req);
+      }
+      return ok({ id: trip.id, token: trip.token, skipped });
     }
 
     const trip = s.trips.find((t) => t.id === parts[1]);
@@ -325,19 +357,7 @@ async function route(request, s, env) {
         if (!byRider && !isDriver && !isAdmin) throw new HttpError(403, "You can't move this person.");
         if (req.leg !== trip.leg) throw new HttpError(409, "That person is looking for a ride on a different day.");
         fits(sizeOf(req));
-        s.requests = s.requests.filter((r) => r !== req);
-        trip.passengers.push({
-          id: req.id,
-          token: req.token,
-          name: req.name,
-          contact: req.contact,
-          count: sizeOf(req),
-          area: req.area || "",
-          pickup: req.pickup || "",
-          time: req.time || "",
-          note: req.note || "",
-          addedAt: Date.now(),
-        });
+        moveIntoCar(s, trip, req);
         return ok({ id: req.id });
       }
       if (itemCount(s) >= MAX_ITEMS) throw new HttpError(429, "The board is full. Ask the organizer to tidy up.");
