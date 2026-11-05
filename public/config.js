@@ -8,8 +8,8 @@ window.CONFIG = {
   destinationShort: "Rezidence Kurzeme",
   venueNote: "The exact address is pinned in the WhatsApp group.",
 
-  // Language people see first: "lv" or "en". Everyone can switch at the top of the page.
-  defaultLanguage: "lv",
+  // Language people see first: "en" or "lv". Everyone can switch at the top of the page.
+  defaultLanguage: "en",
 
   // Latvian versions of the wording above. Leave a line out to show the English one.
   lv: {

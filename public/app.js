@@ -980,13 +980,15 @@
     store.set("gt.admin", "");
     render();
   });
-  $("#btn-lang").addEventListener("click", () => {
+  function switchLang() {
     lang = lang === "lv" ? "en" : "lv";
     store.set("gt.lang", lang);
     closeDialog();
     applyStatic();
     render();
-  });
+  }
+  $("#btn-lang").addEventListener("click", switchLang);
+  $("#gate-lang").addEventListener("click", switchLang);
 
   $("#legs").addEventListener("click", (e) => {
     const chip = e.target.closest("[data-leg]");
@@ -1081,6 +1083,7 @@
     $("#tagline").textContent = ct("tagline");
     $("#venue-note").textContent = ct("venueNote");
     $("#btn-lang").textContent = t("switchTo");
+    $("#gate-lang").textContent = t("switchTo");
     $("#admin-banner-text").textContent = t("adminBanner");
     $("#btn-admin-exit").textContent = t("exit");
     $("#btn-drive").textContent = t("btnDrive");
