@@ -167,4 +167,22 @@ const riTrip = r.body;
 await call("DELETE", `trips/${riTrip.id}`, { token: riTrip.token });
 for (const id of [flo2.id, tom.id, sunOnly.id]) await call("DELETE", `requests/${id}`, { admin: "boss" });
 
+// a passenger's group size can be changed in the car, but only if it fits
+r = await call("POST", "trips", { body: { leg: "fri-to", time: "16:30", seats: 1, pickup: "Center", driver: "Linda", contact: "29000030" } });
+const linda = r.body;
+r = await call("POST", `trips/${linda.id}/seats`, { body: { name: "Florence", contact: "+41770000002" } });
+const florence = r.body;
+r = await call("PATCH", `trips/${linda.id}/seats/${florence.id}`, { body: { count: 2 }, admin: "boss" });
+assert.equal(r.status, 409, "1-seat car can't hold a group of 2");
+r = await call("PATCH", `trips/${linda.id}`, { body: { seats: 2 }, admin: "boss" });
+r = await call("PATCH", `trips/${linda.id}/seats/${florence.id}`, { body: { count: 2 }, admin: "boss" });
+assert.equal(r.body.state.trips.find((x) => x.id === linda.id).passengers[0].count, 2);
+r = await call("PATCH", `trips/${linda.id}/seats/${florence.id}`, { body: { count: 1 }, token: "nope" });
+assert.equal(r.status, 403);
+r = await call("PATCH", `trips/${linda.id}/seats/${florence.id}`, { body: { count: 1 }, token: florence.token });
+assert.equal(r.status, 200, "the passenger can change it too");
+await call("DELETE", `trips/${linda.id}`, { token: linda.token });
+r = await call("GET", "state");
+for (const x of r.body.requests.filter((x) => x.name === "Florence")) await call("DELETE", `requests/${x.id}`, { admin: "boss" });
+
 console.log("All carpool tests passed.");

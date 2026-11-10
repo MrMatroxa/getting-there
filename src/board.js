@@ -378,6 +378,22 @@ async function route(request, s, env) {
       return ok({ id: p.id, token: p.token });
     }
 
+    // PATCH /api/trips/:id/seats/:pid  -> change how many people this seat booking is for
+    // (the passenger, the driver or the organizer). It must still fit in the car.
+    if (parts[2] === "seats" && parts.length === 4 && method === "PATCH") {
+      const p = trip.passengers.find((x) => x.id === parts[3]);
+      if (!p) throw new HttpError(404, "That seat is already free.");
+      const isPassenger = token && token === p.token;
+      if (!isPassenger && !isDriver && !isAdmin) throw new HttpError(403, "You can't change this seat.");
+      if ("count" in body) {
+        const n = groupSize(body.count);
+        const room = trip.seats - usedSeats(trip) + sizeOf(p);
+        if (n > room) throw new HttpError(409, `This car only has ${room} free ${room === 1 ? "seat" : "seats"} left, not enough for ${n}.`);
+        p.count = n;
+      }
+      return ok();
+    }
+
     // DELETE /api/trips/:id/seats/:pid  -> passenger leaves, or driver removes them
     if (parts[2] === "seats" && parts.length === 4 && method === "DELETE") {
       const p = trip.passengers.find((x) => x.id === parts[3]);

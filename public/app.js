@@ -449,7 +449,10 @@
               <div class="rd-name-line"><span class="rd-name">${esc(p.name)}${mineP ? esc(you) : ""}</span>${groupTag(p)}${canManage ? contactHtml(p.contact) : ""}</div>
               ${extra ? `<div class="rd-extra">${extra}</div>` : ""}
             </div>
-            ${canManage && !mineP ? removeBtn(trip.id, p) : ""}
+            <span class="rd-row-actions">
+              ${canManage || mineP ? `<button type="button" class="link" data-act="edit-pax" data-trip="${esc(trip.id)}" data-pax="${esc(p.id)}">${esc(t("editEntry"))}</button>` : ""}
+              ${canManage && !mineP ? removeBtn(trip.id, p) : ""}
+            </span>
           </li>`;
       })
       .join("");
@@ -982,6 +985,26 @@
     });
   }
 
+  // Change how many people a seat booking is for (e.g. "Florence is really 2").
+  function editPassenger(tripId, paxId) {
+    const trip = data.trips.find((x) => x.id === tripId);
+    const p = trip && trip.passengers.find((x) => x.id === paxId);
+    if (!p) return;
+    const room = trip.seats - used(trip) + size(p);
+    openDialog({
+      title: p.name,
+      submit: t("saveChanges"),
+      body: `${groupField(size(p), Math.max(room, size(p)), false)}
+        <p class="dlg-lead">${esc(t("paxRoom", room, trip.seats))}</p>`,
+      onOpen: wireSteppers,
+      async onSubmit(fd) {
+        const token = isMine(p.id) ? mine[p.id] : mine[trip.id];
+        await api(`trips/${trip.id}/seats/${p.id}`, { method: "PATCH", body: { count: Number(fd.get("count") || 1) }, token });
+        toast(t("entryUpdated"));
+      },
+    });
+  }
+
   // Driver: pick people from the Still looking list for this trip's day.
   function addPicker(tripId) {
     const trip = data.trips.find((x) => x.id === tripId);
@@ -1160,6 +1183,7 @@
       });
     }
     if (act === "edit-req") return editRequest(reqId);
+    if (act === "edit-pax") return editPassenger(tripId, paxId);
     if (act === "del-req") {
       const own = isMine(reqId);
       return confirmBox(own ? t("delSelfQ") : t("delOtherQ"), esc(own ? t("delSelfText") : t("delOtherText")), t("remove"), async () => {

@@ -482,3 +482,5 @@ a { color: var(--accent); }
 .fr-place { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 600; }
 .fr-driver { white-space: nowrap; }
 .full-row .pill { padding: 2px 8px; font-size: .75rem; }
+
+.rd-row-actions { display: inline-flex; gap: 12px; align-items: center; flex: none; }
